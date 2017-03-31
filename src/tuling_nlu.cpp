@@ -117,8 +117,10 @@ int main(int argc, char* argv[])
 
 	ros::NodeHandle n;
 
-        ros::Subscriber sub = n.subscribe("/voice/tuling_nlu_topic", 5, nlpCallback);
+	// published from ASR
+	ros::Subscriber sub = n.subscribe("/voice/tuling_nlu_topic", 5, nlpCallback);
 
+    // publish to tts and play it
 	ros::Publisher pub = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
 	ros::Rate loop_rate(10);
 

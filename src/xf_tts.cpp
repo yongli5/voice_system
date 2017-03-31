@@ -16,7 +16,7 @@
 #include "msp_errors.h"
 
 using namespace std;
-const char* filename = "/home/ostro/Music/voice.wav";
+const char* filename = "/tmp/voice.wav";
 
 /* wav音频头部格式 */
 typedef struct _wave_pcm_hdr
@@ -140,7 +140,7 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 
 int TextToWav(const char* text, const char* filename)
 {
-        int         ret                  = MSP_SUCCESS;
+	int         ret                  = MSP_SUCCESS;
 	const char* login_params         = "appid = 58d77a1a, work_dir = .";//登录参数,appid与msc库绑定,请勿随意改动
 	/*
 	* rdn:           合成音频数字发音方式
@@ -178,7 +178,7 @@ exit:
 
 void playWav()
 {
-        system("play /home/ostro/Music/voice.wav");
+        system("play /tmp/voice.wav");
 
 }
 
@@ -194,15 +194,17 @@ void ttsCallback(const std_msgs::String::ConstPtr& msg)
 
 int main(int argc, char* argv[])
 {
-        const char* start = "在线语音合成模块启动";
-        TextToWav(start, filename);
-        playWav();
+	const char* start = "在线语音合成模块启动";
+	TextToWav(start, filename);
+	playWav();
 
-        ros::init(argc, argv, "xf_tts_node");
+	ros::init(argc, argv, "xf_tts_node");
 
 	ros::NodeHandle n;
 
-        ros::Subscriber sub = n.subscribe("/voice/xf_tts_topic", 5, ttsCallback);
+	// get msg published by tuling, and read it
+	ros::Subscriber sub = n.subscribe("/voice/xf_tts_topic", 5, ttsCallback);
+	// rostopic pub  /voice/xf_tts_topic std_msgs/String "start ..."
 
 	ros::spin();
 

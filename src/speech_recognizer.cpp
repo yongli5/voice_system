@@ -286,6 +286,8 @@ int sr_stop_listening(struct speech_rec *sr)
 	int ret = 0;
 	const char * rslt = NULL;
 
+	printf("+%s\n", __func__);
+
 	if (sr->state < SR_STATE_STARTED) {
 		sr_dbg("Not started or already stopped.\n");
 		return 0;
