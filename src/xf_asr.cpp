@@ -11,6 +11,7 @@
 #include <ros/assert.h>
 
 #include <std_msgs/String.h>
+#include <std_msgs/Int8.h>
 #include <std_msgs/Int32.h>
 
 #include "qisr.h"
@@ -22,10 +23,12 @@
 #define	BUFFER_SIZE	4096
 
 #define ASRSTART        1
+#define SYS_UNAUTH		0
+#define SYS_AUTH		1
 
 using namespace std;
-static string result;
-static bool recflag = true;
+//static string result;
+static bool speech_end = false;
 static int asr_flag = 0;
 
 static void show_result(char *str, char is_over)
@@ -33,10 +36,10 @@ static void show_result(char *str, char is_over)
 	int i = 0;
 	int len = strlen(str);
 
-	printf("%s [%s]\n", __func__, str);
+	printf("+%s [%s]\n", __func__, str);
 
 	for (i = 0; i < len; i++) {
-		printf("%x:", str[i]);
+		//printf("%x:", str[i]);
 	}
 	printf("\n");
 
@@ -45,17 +48,18 @@ static void show_result(char *str, char is_over)
 	if(is_over)
 		putchar('\n');
 
-	string s(str);
-	result = s;
+	//string s(str);
+	//result = s;
 	asr_flag = 1;
 }
 
 static char *g_result = NULL;
 static unsigned int g_buffersize = BUFFER_SIZE;
 
-void on_result(const char *result, char is_last)
+static void on_result(const char *result, char is_last)
 {
-	ROS_INFO("+%s result=%p [%s] is_last=%d\n", __func__, result, result, is_last);
+	printf("+%s [%s]\n", __func__, result);
+	ROS_INFO("+%s result=%p is_last=%d\n", __func__, result, is_last);
 	
 	if (result) {
 		size_t left = g_buffersize - 1 - strlen(g_result);
@@ -70,32 +74,40 @@ void on_result(const char *result, char is_last)
 			}
 		}
 		strncat(g_result, result, size);
-		show_result(g_result, is_last);
+		if (is_last) {
+			show_result(g_result, is_last);
+		}
 	}
 }
-void on_speech_begin()
+
+static void on_speech_begin()
 {
 	ROS_INFO("+%s %p\n", __func__, g_result);
 	if (g_result) {
 		free(g_result);
+		g_result = NULL;
 	}
 	g_result = (char*)malloc(BUFFER_SIZE);
 	g_buffersize = BUFFER_SIZE;
 	memset(g_result, 0, g_buffersize);
 
-	ROS_INFO("%s\n", __func__);
+	speech_end = false;
+	ROS_INFO("-%s\n", __func__);
 	//printf("Start Listening...\n");
 }
-void on_speech_end(int reason)
+
+static void on_speech_end(int reason)
 {
-	ROS_INFO("+%s\n", __func__);
+	ROS_INFO("+%s %d\n", __func__, reason);
 	if (reason == END_REASON_VAD_DETECT) {
 		ROS_INFO("Speaking done \n");
-		recflag = false;
 	}
-	else
+	else {
 		ROS_ERROR("Recognizer error: %d\n", reason);
-		recflag = false;
+	}
+	speech_end = true;
+	
+	ROS_INFO("-%s %d\n", __func__, reason);
 }
 
 /* demo recognize the audio from microphone */
@@ -112,6 +124,8 @@ static void demo_mic(const char* session_begin_params)
 		on_speech_end
 	};
 
+	ROS_INFO("+%s\n", __func__);
+
 	errcode = sr_init(&iat, session_begin_params, SR_MIC, &recnotifier);
 	if (errcode) {
 		ROS_ERROR("speech recognizer init failed\n");
@@ -121,10 +135,10 @@ static void demo_mic(const char* session_begin_params)
 	if (errcode) {
 		ROS_ERROR("start listen failed %d\n", errcode);
 	}
-	/* demo 15 seconds recording */
-	while(recflag) {
+	/* wait for recording end*/
+	while(!speech_end) {
 		//printf("recflag %d\n", recflag);
-		sleep(1);	
+		sleep(1);
 	}
 	errcode = sr_stop_listening(&iat);
 	if (errcode) {
@@ -132,9 +146,10 @@ static void demo_mic(const char* session_begin_params)
 	}
 
 	sr_uninit(&iat);
+	ROS_INFO("-%s\n", __func__);
 }
 
-void asrProcess()
+static void asrProcess()
 {
 	int ret = MSP_SUCCESS;
 	/* login params, please do keep the appid correct */
@@ -159,19 +174,17 @@ void asrProcess()
 		goto exit; // login fail, exit the program
 	}
 
-	ROS_INFO("Demo recognizing the speech from microphone\n");
-	ROS_INFO("Speak in 15 seconds\n");
+	ROS_INFO("Recognizing the speech from microphone\n");
 
 	demo_mic(session_begin_params);
 
-	ROS_INFO("15 sec passed\n");
 exit:
-	ROS_INFO("logout\n");
+	ROS_INFO("-%s logout\n", __func__);
 	MSPLogout(); // Logout...
 
 }
 
-void asrCallback(const std_msgs::Int32::ConstPtr& msg)
+static void asrCallback(const std_msgs::Int32::ConstPtr& msg)
 {
 	ROS_INFO("+%s %d\n", __func__, msg->data);
      //std::cout<<"Now revoke record asrCallback .. " << endl; 
@@ -179,18 +192,31 @@ void asrCallback(const std_msgs::Int32::ConstPtr& msg)
      if (msg->data == ASRSTART) {
         asrProcess(); 
      }
+	 ROS_INFO("-%s\n", __func__);
+}
+
+static int read_config() {
+	
+}
+
+static int search_command(const char *command) {
+	int i = 0;
+	int code = 0;
+	
+	return code;
 }
 
 int main(int argc, char* argv[])
 {
-	std::cout << "asr start ..." << endl; 
+	int code = 0;
+	//std::cout << "asr start ..." << endl; 
     ros::init(argc, argv, "xf_asr_node");
 
 	ros::NodeHandle n;
 
     ros::Subscriber sub = n.subscribe("/voice/xf_asr_topic", 50, asrCallback);
 
-	ros::Publisher pub = n.advertise<std_msgs::String>("/voice/tuling_nlu_topic", 50);
+	ros::Publisher pub_text = n.advertise<std_msgs::String>("/voice/tuling_nlu_topic", 50);
 	ros::Publisher pub_cmd = n.advertise<std_msgs::Int32>("/voice/cmd_topic", 50);
 
 	ros::Rate loop_rate(10);
@@ -199,30 +225,29 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
-		if (asr_flag)
+		// listen .. 
+		asrProcess();
+		//if (asr_flag)
 		{
-			std_msgs::String msg;	
+			std_msgs::String msg;
 			std_msgs::Int32 cmd_msg;
-			msg.data = result;
-			if (strcmp("启动。", result.c_str()) == 0) {
-				ROS_INFO("start ...\n");
-				cmd_msg.data = 1;
-				pub_cmd.publish(msg);
-			} else if (0){
-				
-			} else {
+			msg.data = g_result;
 
+			code = search_command(g_result);
+			if (code > 0) { // the voice is a special command
+				cmd_msg.data = code;
+				pub_cmd.publish(msg);
+			} else { // general voice
+				printf("publish [%s]\n", g_result);
+				ROS_INFO("Publish [%s]\n", msg.data.c_str());
+				pub_text.publish(msg);
 			}
 
-
-			printf("publish %s\n", result.c_str());
-			ROS_INFO("Publish [%s]\n", msg.data.c_str());
-			pub.publish(msg);
-			recflag = true;
-			asr_flag =0;
+			//speech_end = true;
+			//asr_flag =0;
 		}
 		loop_rate.sleep();
-                ros::spinOnce();
+        ros::spinOnce();
 	 }
 
 	return 0;
