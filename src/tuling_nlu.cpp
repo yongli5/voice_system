@@ -10,7 +10,7 @@
 #include <exception>
 
 using namespace std;
-string result;
+static string result;
 int flag = 0;
 
 int writer(char *data, size_t size, size_t nmemb, string *writerdata)
@@ -82,7 +82,7 @@ int HttpPostRequest(string input)
 	   res = curl_easy_perform(pcurl);
 
 	   if (res != CURLE_OK) {
-	      printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));  
+	      printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 	   
 	   }
 	   curl_easy_cleanup(pcurl);
@@ -91,7 +91,7 @@ int HttpPostRequest(string input)
 	curl_global_cleanup();
      }
      catch (std::exception &ex) {
-        printf("curl exception !!", ex.what());     
+        printf("curl exception %s!!", ex.what());     
      }
 
      if (buffer.empty()) {

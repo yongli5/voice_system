@@ -10,13 +10,15 @@
 #include <unistd.h>
 #include <ros/ros.h>
 #include <std_msgs/String.h>
+#include <std_msgs/Int32.h>
 
 #include "qtts.h"
 #include "msp_cmn.h"
 #include "msp_errors.h"
 
 using namespace std;
-const char* filename = "/tmp/voice.wav";
+static const char* filename = "/tmp/voice.wav";
+static ros::Publisher pub_play;
 
 /* wav音频头部格式 */
 typedef struct _wave_pcm_hdr
@@ -92,7 +94,7 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 		fclose(fp);
 		return ret;
 	}
-	printf("正在合成 ...\n");
+	//printf("正在合成 ...\n");
 	fwrite(&wav_hdr, sizeof(wav_hdr) ,1, fp); //添加wav音频头，使用采样率为16000
 	while (1) 
 	{
@@ -162,13 +164,13 @@ int TextToWav(const char* text, const char* filename)
 		goto exit ;//登录失败，退出登录
 	}
 	/* 文本合成 */
-	printf("开始合成 ...\n");
+	ROS_INFO("Gen...");
 	ret = text_to_speech(text, filename, session_begin_params);
 	if (MSP_SUCCESS != ret)
 	{
 		printf("text_to_speech failed, error code: %d.\n", ret);
 	}
-	printf("合成完毕\n");
+	ROS_INFO("Finish");
 
 exit:
 	MSPLogout(); //退出登录
@@ -178,18 +180,31 @@ exit:
 
 void playWav()
 {
-        system("play /tmp/voice.wav");
-
+	ROS_INFO("Start play...");
+	system("play /tmp/voice.wav");
+	ROS_INFO("End play...");
 }
 
-
-void ttsCallback(const std_msgs::String::ConstPtr& msg)
+static void ttsCallback(const std_msgs::String::ConstPtr& msg)
 {
-     std::cout<<"Get topic text: "<< msg->data.c_str() << endl; 
+	std_msgs::Int32 msg_play;
 
-     TextToWav(msg->data.c_str(), filename);
+	ROS_INFO("+%s", __func__);
+	printf("%s [%s]\n", __func__, msg->data.c_str());
+	//std::cout<<"Get topic text: "<< msg->data.c_str() << endl; 
 
-     playWav();
+	TextToWav(msg->data.c_str(), filename);
+
+	//msg_play.data = 1;
+	//ROS_INFO("%s pub 1", __func__);
+	//pub_play.publish(msg_play);
+	playWav();
+	sleep(1);
+	msg_play.data = 0;
+	ROS_INFO("%s pub 0", __func__);
+	pub_play.publish(msg_play);	
+	
+	ROS_INFO("-%s", __func__);	
 }
 
 int main(int argc, char* argv[])
@@ -202,8 +217,10 @@ int main(int argc, char* argv[])
 
 	ros::NodeHandle n;
 
-	// get msg published by tuling, and read it
-	ros::Subscriber sub = n.subscribe("/voice/xf_tts_topic", 5, ttsCallback);
+	pub_play = n.advertise<std_msgs::Int32>("/voice/xf_tts_playing", 50);	
+
+	// get msg published by tuling/ASR, and play it back
+	ros::Subscriber sub = n.subscribe("/voice/xf_tts_topic", 50, ttsCallback);
 	// rostopic pub  /voice/xf_tts_topic std_msgs/String "start ..."
 
 	ros::spin();
