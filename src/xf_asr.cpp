@@ -14,11 +14,106 @@
 #include <std_msgs/String.h>
 #include <std_msgs/Int8.h>
 #include <std_msgs/Int32.h>
+#include <geometry_msgs/Twist.h>
 
 #include "qisr.h"
 #include "msp_cmn.h"
 #include "msp_errors.h"
 #include "speech_recognizer.h"
+
+enum state_codes { entry, foo, bar, end, fail_code};
+enum ret_codes { ok, fail, repeat};
+
+#define EXIT_STATE end
+#define ENTRY_STATE entry
+#define FOO_STATE foo
+#define BAR_STATE bar
+
+#define CODE_OK  ok
+#define CODE_FAIL fail
+#define CODE_REPEAT repeat
+
+struct transition {
+    enum state_codes src_state;
+    enum ret_codes   ret_code;
+    enum state_codes dst_state;
+};
+/* transitions from end state aren't needed */
+struct transition state_transitions[] = {
+    {entry, ok,     foo},
+    {entry, fail,   end},
+    {foo,   ok,     bar},
+    {foo,   fail,   end},
+    {foo,   repeat, foo},
+    {bar,   ok,     end},
+    {bar,   fail,   end},
+    {bar,   repeat, foo}};
+
+typedef enum ret_codes FUNC(void);
+
+static enum ret_codes entry_state(void)
+{
+    printf("+%s\n", __func__);
+    return CODE_OK;
+}
+static enum ret_codes foo_state(void)
+{
+    printf("+%s\n", __func__);
+    return CODE_OK;
+}
+static enum ret_codes bar_state(void)
+{
+    printf("+%s\n", __func__);
+    return CODE_OK;
+}
+static enum ret_codes exit_state(void)
+{
+    printf("+%s\n", __func__);
+}
+
+/* array and enum below must be in sync! */
+FUNC *state[] = {entry_state, foo_state, bar_state, exit_state};
+
+// return dst_state
+static enum state_codes lookup_transitions(enum state_codes cur_state, enum ret_codes rc) 
+{
+    int i, len;
+    printf("%s %d-%d\n", __func__, cur_state, rc);
+    len = sizeof(state_transitions) / sizeof(state_transitions[0]);
+
+    for (i = 0; i < len; i++) {
+        if ((state_transitions[i].src_state == cur_state) 
+            && (state_transitions[i].ret_code == rc)) {
+            return state_transitions[i].dst_state;
+        }
+    }
+
+    return fail_code;
+}
+
+int test_sm() {
+    enum state_codes cur_state = ENTRY_STATE;
+    enum ret_codes rc = CODE_OK;
+    enum ret_codes (* state_fun)(void);
+
+    for (;;) {
+        printf("cur_state=%d rc=%d\n", cur_state, rc);
+        state_fun = state[cur_state];
+        rc = state_fun();
+        if (EXIT_STATE == cur_state)
+            break;
+        cur_state = lookup_transitions(cur_state, rc);
+		if (cur_state == fail_code) {
+			printf("lookup fail!\n");
+			break;
+		}
+    }
+
+    return EXIT_SUCCESS;
+}
+
+
+#define OFFLINE_TEST
 
 #define FRAME_LEN	640 
 #define	BUFFER_SIZE	4096
@@ -27,14 +122,23 @@
 #define SYS_UNAUTH		0
 #define SYS_AUTH		1
 
+// robot current status
+#define CURRENT_IDLE   0
+#define CURRENT_PF   	1
+#define CURRENT_VSLAM   2
+#define CURRENT_FR   	3
+#define CURRENT_MOVING 	4
+#define CURRENT_OR 		5
+
 using namespace std;
 //static string result;
-static bool sys_locked = true;
+static bool sys_locked = false;
 static bool speech_end = false;
 static bool playing = false;
 static int asr_flag = 0;
 static char *g_result = NULL;
 static unsigned int g_buffersize = BUFFER_SIZE;
+static int current_sm = CURRENT_IDLE;
 
 struct st_command {
 	char command[255];
@@ -160,9 +264,9 @@ static void demo_mic(const char* session_begin_params)
 }
 
 static void asrProcess()
-#if 0
+#ifdef OFFLINE_TEST
 {
-	ROS_INFO("+%s fake\n", __func__);
+	ROS_INFO("+%s fake g_result=%p\n", __func__, g_result);
 	if (g_result) {
 		free(g_result);
 		g_result = NULL;
@@ -175,6 +279,7 @@ static void asrProcess()
 
 	speech_end = false;
 	speech_end = true;
+	asr_flag = 1;
 	sleep(5);
 }
 #else
@@ -273,6 +378,7 @@ static int read_config() {
 
     memset(&voice_commands, 0, sizeof(voice_commands));
 
+	// file format: ֹͣ-2
     f = fopen("/etc/commands.txt", "re");
 
     if (!f) {
@@ -331,12 +437,14 @@ static int search_command(const char *command) {
 		i++;
 	}
 
-	printf("-%s [%s] code=%d\n", __func__, command, code);
+	printf("-%s [%s] get code=%d\n", __func__, command, code);
 	return code;
 }
 
 int main(int argc, char* argv[])
 {
+	geometry_msgs::Twist input_vel;
+
 	char tts_content[255];
 	int code = 0;
 	//std::cout << "asr start ..." << endl; 
@@ -353,7 +461,12 @@ int main(int argc, char* argv[])
 	ros::Publisher pub_tts = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
 
 	ros::Publisher pub_text = n.advertise<std_msgs::String>("/voice/tuling_nlu_topic", 50);
+
+	// command for other modules
 	ros::Publisher pub_cmd = n.advertise<std_msgs::Int32>("/voice/cmd_topic", 50);
+
+	// control the robot
+	ros::Publisher pub_robot = n.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity", 1000); 
 
 	ros::Rate loop_rate(10);
 
@@ -365,13 +478,26 @@ int main(int argc, char* argv[])
 	{
 		// listen .. 
 		asrProcess();
+		if (0)
+		{
+			geometry_msgs::Twist input_vel;
 
-		//if (asr_flag)
+			ROS_INFO("move...");
+			input_vel.linear.x=0.1; //forward/back
+			input_vel.linear.y=0.0;
+			input_vel.linear.z=0.0;
+			input_vel.angular.x=0.0;
+			input_vel.angular.y=0.0;
+			input_vel.angular.z=0.0; //left/right
+			pub_robot.publish(input_vel);
+		}
+		// get voice result
+		if (asr_flag)
 		{
 			std_msgs::String msg;
 			std_msgs::Int32 cmd_msg;
 
-			if ((g_result == NULL) || (0 == strlen(g_result))) {
+			if ((g_result == NULL) || (strlen(g_result) < 2)) {
 				ROS_INFO("no voice detected");
 				continue;
 			}
@@ -379,7 +505,7 @@ int main(int argc, char* argv[])
 			// play back the received voice
 			std_msgs::String msg_tts;
 			// if system is locked, ignore voice input too
-			if (0) //(sys_locked) 
+			if (sys_locked) 
 			{
 				ROS_INFO("sys_locked, skip voice!");
 
@@ -395,6 +521,20 @@ int main(int argc, char* argv[])
 			msg.data = g_result;
 
 			code = search_command(g_result);
+
+			// code=0, stop all actions!
+
+			if (code == 0) { // stop movement
+				current_sm = CURRENT_IDLE;
+				input_vel.linear.x=0.0; //forward/back
+				input_vel.linear.y=0.0;
+				input_vel.linear.z=0.0;
+				input_vel.angular.x=0.0;
+				input_vel.angular.y=0.0;
+				input_vel.angular.z=0.0; //left/right
+				pub_robot.publish(input_vel);
+			}
+			
 			if (code >= 0) { // the voice is a special command
 				cmd_msg.data = code;
 				ROS_INFO("Publish command [%d]", code);
@@ -402,8 +542,59 @@ int main(int argc, char* argv[])
 				memset(tts_content, 0, sizeof(tts_content));
 				sprintf(tts_content, "执行命令 %s", g_result);
 				msg_tts.data = tts_content;
-				pub_tts.publish(msg_tts);
-				pub_cmd.publish(cmd_msg);
+				
+				pub_tts.publish(msg_tts); // playback
+
+				if (code <= 100) { // pf/vslam/or
+					switch (code) {
+						case 0:
+							current_sm = CURRENT_IDLE;
+							break;
+						case 1:
+							current_sm = CURRENT_PF;
+							break;
+						case 2:
+							current_sm = CURRENT_IDLE;
+							break;
+						case 3:
+							current_sm = CURRENT_VSLAM;
+							break;
+						case 4:
+							current_sm = CURRENT_IDLE;
+						case 5:
+							current_sm = CURRENT_FR;
+							break;
+						default:
+							break;
+					}
+					pub_cmd.publish(cmd_msg); // send to other modules
+				} else { // control commands
+					ROS_INFO("move %d...", code);
+					input_vel.linear.x=0.0; //forward/back
+					input_vel.linear.y=0.0;
+					input_vel.linear.z=0.0;
+					input_vel.angular.x=0.0;
+					input_vel.angular.y=0.0;
+					input_vel.angular.z=0.0; //left/right
+					switch (code) {
+						case 300:
+							input_vel.angular.z=0.2;
+							break;
+						case 400:
+							input_vel.angular.z=-0.2;
+							break;
+						case 500:
+							input_vel.linear.x=0.1;
+							break;
+						case 600:
+							input_vel.linear.x=-0.1;
+							break;
+						default:
+							break;
+					}
+					pub_robot.publish(input_vel);
+					current_sm = CURRENT_MOVING;
+				}
 				sleep(8);
 			} else { // send to tuling
 				printf("publish [%s]\n", g_result);
@@ -420,6 +611,8 @@ int main(int argc, char* argv[])
 
 			//speech_end = true;
 			//asr_flag =0;
+		}else {
+			ROS_INFO("asr_flag=false");
 		}
 		loop_rate.sleep();
         ros::spinOnce();
