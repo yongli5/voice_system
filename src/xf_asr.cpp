@@ -457,6 +457,7 @@ int main(int argc, char* argv[])
     //ros::Subscriber sub = n.subscribe("/voice/xf_asr_topic", 50, asrCallback);
     ros::Subscriber sub = n.subscribe("/face/auth", 50, faceCallback);
 
+	// check if the tts/speaker is playing
     ros::Subscriber sub_ttsplay = n.subscribe("/voice/xf_tts_playing", 50, ttsplayCallback);
 	
 	// publish to tts, play back the received voice
@@ -479,7 +480,7 @@ int main(int argc, char* argv[])
 	while (ros::ok())
 	{
 
-		if (1) { // service test
+		if (0) { // service test
 			ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
 			voice_system::TTSService srv;
 			srv.request.target = "service";

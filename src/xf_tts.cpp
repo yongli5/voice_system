@@ -205,7 +205,7 @@ static void ttsCallback(const std_msgs::String::ConstPtr& msg)
 	ROS_INFO("%s pub 0", __func__);
 	pub_play.publish(msg_play);	
 	
-	ROS_INFO("-%s", __func__);	
+	ROS_INFO("-%s", __func__);
 }
 
 static bool ttsService(voice_system::TTSService::Request &req, voice_system::TTSService::Response &res)
@@ -213,6 +213,9 @@ static bool ttsService(voice_system::TTSService::Request &req, voice_system::TTS
 	res.result = true;
 
 	printf("+%s [%s]", __func__, req.target.c_str());
+
+	TextToWav(req.target.c_str(), filename);
+	playWav();
 
 #if 0
 	printf("%s [%s]\n", __func__, msg->data.c_str());
@@ -244,9 +247,10 @@ int main(int argc, char* argv[])
 
 	ros::ServiceServer tts_service = n.advertiseService("tts_service", ttsService);
 
-	//TextToWav(start, filename);
-	//playWav();
+	TextToWav(start, filename);
+	playWav();
 
+	// set 1 if there is playing
 	pub_play = n.advertise<std_msgs::Int32>("/voice/xf_tts_playing", 50);
 
 	// get msg published by tuling/ASR, and play it back
