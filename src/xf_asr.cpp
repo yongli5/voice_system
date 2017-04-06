@@ -20,6 +20,7 @@
 #include "msp_cmn.h"
 #include "msp_errors.h"
 #include "speech_recognizer.h"
+#include "voice_system/TTSService.h"
 
 enum state_codes { entry, foo, bar, end, fail_code};
 enum ret_codes { ok, fail, repeat};
@@ -477,6 +478,19 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
+
+		if (1) { // service test
+			ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
+			voice_system::TTSService srv;
+			srv.request.target = "service";
+			if (client.call(srv)) {
+				ROS_INFO("call service okay");
+			} else {
+				ROS_INFO("call service fail");
+			}
+			continue;
+		}
+	
 		// listen .. 
 		asrProcess();
 		if (0)
@@ -578,16 +592,16 @@ int main(int argc, char* argv[])
 					input_vel.angular.z=0.0; //left/right
 					switch (code) {
 						case 300:
-							input_vel.angular.z=0.3;
+							input_vel.angular.z = 0.3;
 							break;
 						case 400:
-							input_vel.angular.z=-0.3;
+							input_vel.angular.z = -0.3;
 							break;
 						case 500:
-							input_vel.linear.x=0.1;
+							input_vel.linear.x = 0.3;
 							break;
 						case 600:
-							input_vel.linear.x=-0.1;
+							input_vel.linear.x = -0.3;
 							break;
 						default:
 							break;

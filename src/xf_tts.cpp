@@ -15,6 +15,7 @@
 #include "qtts.h"
 #include "msp_cmn.h"
 #include "msp_errors.h"
+#include "voice_system/TTSService.h"
 
 using namespace std;
 static const char* filename = "/tmp/voice.wav";
@@ -207,17 +208,46 @@ static void ttsCallback(const std_msgs::String::ConstPtr& msg)
 	ROS_INFO("-%s", __func__);	
 }
 
+static bool ttsService(voice_system::TTSService::Request &req, voice_system::TTSService::Response &res)
+{
+	res.result = true;
+
+	printf("+%s [%s]", __func__, req.target.c_str());
+
+#if 0
+	printf("%s [%s]\n", __func__, msg->data.c_str());
+	//std::cout<<"Get topic text: "<< msg->data.c_str() << endl; 
+
+	TextToWav(msg->data.c_str(), filename);
+
+	//msg_play.data = 1;
+	//ROS_INFO("%s pub 1", __func__);
+	//pub_play.publish(msg_play);
+	playWav();
+	sleep(1);
+	msg_play.data = 0;
+	ROS_INFO("%s pub 0", __func__);
+	pub_play.publish(msg_play);	
+#endif	
+	ROS_INFO("-%s", __func__);
+	return true;
+}
+
+
 int main(int argc, char* argv[])
 {
 	const char* start = "在线语音合成模块启动";
-	TextToWav(start, filename);
-	playWav();
 
 	ros::init(argc, argv, "xf_tts_node");
 
 	ros::NodeHandle n;
 
-	pub_play = n.advertise<std_msgs::Int32>("/voice/xf_tts_playing", 50);	
+	ros::ServiceServer tts_service = n.advertiseService("tts_service", ttsService);
+
+	//TextToWav(start, filename);
+	//playWav();
+
+	pub_play = n.advertise<std_msgs::Int32>("/voice/xf_tts_playing", 50);
 
 	// get msg published by tuling/ASR, and play it back
 	ros::Subscriber sub = n.subscribe("/voice/xf_tts_topic", 50, ttsCallback);
