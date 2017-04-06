@@ -143,8 +143,8 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 
 int TextToWav(const char* text, const char* filename)
 {
-	int         ret                  = MSP_SUCCESS;
-	const char* login_params         = "appid = 58d77a1a, work_dir = .";//登录参数,appid与msc库绑定,请勿随意改动
+	int         ret                  = MSP_SUCCESS; // 58d77a1a  
+	const char* login_params         = "appid = 58d87002, work_dir = .";//登录参数,appid与msc库绑定,请勿随意改动
 	/*
 	* rdn:           合成音频数字发音方式
 	* volume:        合成音频的音量
@@ -212,10 +212,11 @@ static bool ttsService(voice_system::TTSService::Request &req, voice_system::TTS
 {
 	res.result = true;
 
-	printf("+%s [%s]", __func__, req.target.c_str());
+	printf("+%s play [%s]", __func__, req.target.c_str());
 
 	TextToWav(req.target.c_str(), filename);
 	playWav();
+	sleep(1);
 
 #if 0
 	printf("%s [%s]\n", __func__, msg->data.c_str());

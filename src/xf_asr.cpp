@@ -131,6 +131,13 @@ int test_sm() {
 #define CURRENT_FR   	3
 #define CURRENT_MOVING 	4
 #define CURRENT_OR 		5
+#define CURRENT_HAND_OPEN 		6
+#define CURRENT_HAND_CLOSE 		7
+
+#define CURRENT_PF_ERROR 50
+#define CURRENT_VSLAM_ERROR 51
+#define CURRENT_OR_ERROR 52
+#define CURRENT_ARM_ERROR 53
 
 using namespace std;
 //static string result;
@@ -287,8 +294,8 @@ static void asrProcess()
 #else
 {
 	int ret = MSP_SUCCESS;
-	/* login params, please do keep the appid correct */
-	const char* login_params = "appid = 58d77a1a, work_dir = .";
+	/* login params, please do keep the appid correct 58d77a1a*/
+	const char* login_params = "appid = 58d87002, work_dir = .";
 
 	/*
 	* See "iFlytek MSC Reference Manual"
@@ -367,6 +374,13 @@ static void ttsplayCallback(const std_msgs::Int32::ConstPtr& msg)
 	} else {
 		playing = false;
 	}
+}
+
+static void resultsCallback(const std_msgs::Int32::ConstPtr& msg)
+{
+	ROS_INFO("+%s %d", __func__, msg->data);
+
+	current_sm = CURRENT_IDLE;
 }
 
 // get voice txt- command list
@@ -454,9 +468,15 @@ int main(int argc, char* argv[])
 
 	ros::NodeHandle n;
 
+	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
+	voice_system::TTSService srv;
+
     //ros::Subscriber sub = n.subscribe("/voice/xf_asr_topic", 50, asrCallback);
     ros::Subscriber sub = n.subscribe("/face/auth", 50, faceCallback);
 
+	// get results from other modules
+	ros::Subscriber sub_results = n.subscribe("/voice/result_topic", 50, resultsCallback);
+		
 	// check if the tts/speaker is playing
     ros::Subscriber sub_ttsplay = n.subscribe("/voice/xf_tts_playing", 50, ttsplayCallback);
 	
@@ -481,8 +501,6 @@ int main(int argc, char* argv[])
 	{
 
 		if (0) { // service test
-			ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
-			voice_system::TTSService srv;
 			srv.request.target = "service";
 			if (client.call(srv)) {
 				ROS_INFO("call service okay");
@@ -528,8 +546,14 @@ int main(int argc, char* argv[])
 				sprintf(tts_content, "收到 %s", g_result);
 				strcat(tts_content, "系统锁定 被忽略!");
 				msg_tts.data = tts_content;
-				pub_tts.publish(msg_tts);
-				sleep(6);
+				//pub_tts.publish(msg_tts);
+				//sleep(6);
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}
 				continue;
 			}
 
@@ -538,7 +562,6 @@ int main(int argc, char* argv[])
 			code = search_command(g_result);
 
 			// code=0, stop all actions!
-
 			if (code == 0) { // stop movement
 				current_sm = CURRENT_IDLE;
 				input_vel.linear.x=0.0; //forward/back
@@ -558,59 +581,103 @@ int main(int argc, char* argv[])
 				sprintf(tts_content, "执行命令 %s", g_result);
 				msg_tts.data = tts_content;
 				
-				pub_tts.publish(msg_tts); // playback
+				//pub_tts.publish(msg_tts); // playback
 
 				if (code <= 100) { // pf/vslam/or
 					switch (code) {
-						case 0:
+						case 0:// stop command, send out in any conditions 
 							current_sm = CURRENT_IDLE;
+							pub_cmd.publish(cmd_msg);
 							break;
-						case 1:
-							current_sm = CURRENT_PF;
+						case 1: // PF command check if it is oaky to send out this command
+							if (current_sm == CURRENT_IDLE) {
+								current_sm = CURRENT_PF;
+								pub_cmd.publish(cmd_msg);			
+							}
 							break;
-						case 2:
+						case 2: // stop PF
+							if (current_sm == CURRENT_PF) {
+								current_sm = CURRENT_IDLE;
+								pub_cmd.publish(cmd_msg);
+							}
+							break;
+						case 3: // start VSLAM
+							if (current_sm == CURRENT_IDLE) {
+								current_sm = CURRENT_VSLAM;
+								pub_cmd.publish(cmd_msg);
+							}
+							break;
+						case 4: // stop VSLAM
+							if (current_sm == CURRENT_VSLAM) {
+								current_sm = CURRENT_IDLE;
+								pub_cmd.publish(cmd_msg);
+							}
+						case 5: // bye-bye
 							current_sm = CURRENT_IDLE;
+							pub_cmd.publish(cmd_msg);
 							break;
-						case 3:
-							current_sm = CURRENT_VSLAM;
+						case 6: // arm move
+							//if (current_sm == CURRENT_IDLE) {
+								//current_sm = CURRENT_IDLE;
+								pub_cmd.publish(cmd_msg);
+							//}
 							break;
-						case 4:
-							current_sm = CURRENT_IDLE;
-						case 5:
-							current_sm = CURRENT_FR;
+						case 7: // open HAND
+							if (current_sm != CURRENT_HAND_OPEN) {
+								current_sm = CURRENT_HAND_OPEN;
+								pub_cmd.publish(cmd_msg);
+							}
+							break;
+						case 8: // 	close hand
+							if (current_sm == CURRENT_HAND_OPEN) {
+								current_sm = CURRENT_HAND_CLOSE;
+								pub_cmd.publish(cmd_msg);
+							}
+							break;
+						case 9:// OR
+							// TODO
 							break;
 						default:
 							break;
 					}
-					pub_cmd.publish(cmd_msg); // send to other modules
+					 // send to other modules
 				} else { // control commands
-					ROS_INFO("move %d...", code);
-					input_vel.linear.x=0.0; //forward/back
-					input_vel.linear.y=0.0;
-					input_vel.linear.z=0.0;
-					input_vel.angular.x=0.0;
-					input_vel.angular.y=0.0;
-					input_vel.angular.z=0.0; //left/right
-					switch (code) {
-						case 300:
-							input_vel.angular.z = 0.3;
-							break;
-						case 400:
-							input_vel.angular.z = -0.3;
-							break;
-						case 500:
-							input_vel.linear.x = 0.3;
-							break;
-						case 600:
-							input_vel.linear.x = -0.3;
-							break;
-						default:
-							break;
+					if ((current_sm == CURRENT_MOVING)
+						|| (current_sm = CURRENT_IDLE)) {
+						ROS_INFO("move %d...", code);
+						input_vel.linear.x=0.0; //forward/back
+						input_vel.linear.y=0.0;
+						input_vel.linear.z=0.0;
+						input_vel.angular.x=0.0;
+						input_vel.angular.y=0.0;
+						input_vel.angular.z=0.0; //left/right
+						switch (code) {
+							case 300:
+								input_vel.angular.z = 0.3;
+								break;
+							case 400:
+								input_vel.angular.z = -0.3;
+								break;
+							case 500:
+								input_vel.linear.x = 0.3;
+								break;
+							case 600:
+								input_vel.linear.x = -0.3;
+								break;
+							default:
+								break;
+						}
+						pub_robot.publish(input_vel);
+						current_sm = CURRENT_IDLE;
 					}
-					pub_robot.publish(input_vel);
-					current_sm = CURRENT_MOVING;
 				}
-				sleep(8);
+				//sleep(8);
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}
 			} else { // send to tuling
 				printf("publish [%s]\n", g_result);
 				ROS_INFO("Publish [%s]", msg.data.c_str());
@@ -618,10 +685,16 @@ int main(int argc, char* argv[])
 				memset(tts_content, 0, sizeof(tts_content));
 				sprintf(tts_content, "未识别 %s 请机器人帮忙", g_result);
 				msg_tts.data = tts_content;
-				pub_tts.publish(msg_tts);
+				//pub_tts.publish(msg_tts);
 				//playing = true;
 				pub_text.publish(msg);
-				sleep(8);
+				//sleep(8);
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}
 			}
 
 			//speech_end = true;
