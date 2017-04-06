@@ -113,7 +113,8 @@ int test_sm() {
 }
 
 
-#define OFFLINE_TEST
+// local test
+//#define OFFLINE_TEST
 
 #define FRAME_LEN	640 
 #define	BUFFER_SIZE	4096
@@ -238,7 +239,7 @@ static void demo_mic(const char* session_begin_params)
 		on_speech_end
 	};
 
-	ROS_INFO("+%s", __func__);
+	ROS_INFO("+%s [%s]", __func__, session_begin_params);
 
 	errcode = sr_init(&iat, session_begin_params, SR_MIC, &recnotifier);
 	if (errcode) {
@@ -275,7 +276,7 @@ static void asrProcess()
 	g_buffersize = BUFFER_SIZE;
 	memset(g_result, 0, g_buffersize);
 
-	strcpy(g_result, "启动。");
+	strcpy(g_result, "左");
 
 	speech_end = false;
 	speech_end = true;
@@ -286,7 +287,7 @@ static void asrProcess()
 {
 	int ret = MSP_SUCCESS;
 	/* login params, please do keep the appid correct */
-	const char* login_params = "appid = 58d87002, work_dir = .";
+	const char* login_params = "appid = 58d77a1a, work_dir = .";
 
 	/*
 	* See "iFlytek MSC Reference Manual"
@@ -479,17 +480,16 @@ int main(int argc, char* argv[])
 		// listen .. 
 		asrProcess();
 		if (0)
-		{
-			geometry_msgs::Twist input_vel;
-
+		{	// rostopic pub -v -1 /mobile_base/commands/velocity geometry_msgs/Twist -- '[0.1,0,0]' '[0,0,0]'
 			ROS_INFO("move...");
-			input_vel.linear.x=0.1; //forward/back
+			input_vel.linear.x=0.0; //forward/back
 			input_vel.linear.y=0.0;
 			input_vel.linear.z=0.0;
 			input_vel.angular.x=0.0;
 			input_vel.angular.y=0.0;
-			input_vel.angular.z=0.0; //left/right
+			input_vel.angular.z=0.3; //left/right
 			pub_robot.publish(input_vel);
+			//continue;
 		}
 		// get voice result
 		if (asr_flag)
@@ -578,10 +578,10 @@ int main(int argc, char* argv[])
 					input_vel.angular.z=0.0; //left/right
 					switch (code) {
 						case 300:
-							input_vel.angular.z=0.2;
+							input_vel.angular.z=0.3;
 							break;
 						case 400:
-							input_vel.angular.z=-0.2;
+							input_vel.angular.z=-0.3;
 							break;
 						case 500:
 							input_vel.linear.x=0.1;
