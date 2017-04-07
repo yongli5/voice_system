@@ -103,10 +103,10 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES voice_system
-#  CATKIN_DEPENDS roscpp rospy std_msgs
-#  DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES voice_system
+  CATKIN_DEPENDS roscpp rospy std_msgs
+  DEPENDS system_lib
 )
 
 ###########
@@ -129,14 +129,14 @@ include_directories(
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(xf_tts_node src/xf_tts.cpp)
-add_executable(tuling_nlu_node src/tuling_nlu.cpp)
 add_executable(xf_asr_node src/xf_asr.cpp src/linuxrec.cpp src/speech_recognizer.cpp)
+add_dependencies(xf_asr_node voice_system_generate_messages_cpp)
+add_executable(tuling_nlu_node src/tuling_nlu.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -150,6 +150,10 @@ add_executable(xf_asr_node src/xf_asr.cpp src/linuxrec.cpp src/speech_recognizer
 
 ## Specify libraries to link a library or executable target against
 
+target_link_libraries(xf_asr_node
+   ${catkin_LIBRARIES}
+   -lmsc -lrt -ldl -lpthread -lasound
+)
 target_link_libraries(xf_tts_node
    ${catkin_LIBRARIES}
    -lmsc -lrt -ldl -lpthread
@@ -157,10 +161,6 @@ target_link_libraries(xf_tts_node
 target_link_libraries(tuling_nlu_node
    ${catkin_LIBRARIES}
    -ljsoncpp -lcurl
-)
-target_link_libraries(xf_asr_node
-   ${catkin_LIBRARIES}
-   -lmsc -lrt -ldl -lpthread -lasound
 )
 #############
 ## Install ##
