@@ -612,9 +612,21 @@ int main(int argc, char* argv[])
 								current_sm = CURRENT_IDLE;
 								pub_cmd.publish(cmd_msg);
 							}
-						case 5: // bye-bye
+						case 5: // bye-bye start FR, and stop all other running tasks
+							if (current_sm == CURRENT_VSLAM) {
+								// stop VSLAM
+								cmd_msg.data = 4;
+								pub_cmd.publish(cmd_msg);
+							}
+							if (current_sm == CURRENT_PF) {
+								// stop PF
+								cmd_msg.data = 2;
+								pub_cmd.publish(cmd_msg);	
+							}
 							current_sm = CURRENT_IDLE;
-							pub_cmd.publish(cmd_msg);
+							sleep(1); // make sure tasks are stop
+							cmd_msg.data = code;
+							pub_cmd.publish(cmd_msg); // start FR task
 							break;
 						case 6: // arm move
 							//if (current_sm == CURRENT_IDLE) {
