@@ -8,6 +8,7 @@
 #include <jsoncpp/json/json.h>
 #include <curl/curl.h>
 #include <exception>
+#include "voice_system/TTSService.h"
 
 using namespace std;
 static string result;
@@ -114,23 +115,32 @@ void nlpCallback(const std_msgs::String::ConstPtr& msg)
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "tuling_nlu_node");
-
+	
 	ros::NodeHandle n;
+	voice_system::TTSService srv;
+	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
 
 	// published from ASR
 	ros::Subscriber sub = n.subscribe("/voice/tuling_nlu_topic", 5, nlpCallback);
 
     // publish to tts and play it
-	ros::Publisher pub = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
+	//ros::Publisher pub = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
 	ros::Rate loop_rate(10);
 
 	while (ros::ok())
 	{
 		if (flag)
-		{
+		{ 
 			std_msgs::String msg;	
 			msg.data = result;
-			pub.publish(msg);
+			//pub.publish(msg); // play the result using TTS
+			srv.request.target = result;
+			if (client.call(srv)) {
+				ROS_INFO("Tuling call service okay");
+			} else {
+				ROS_INFO("Tuling call service fail");
+			}
+
 			flag =0;
 		}
 		ros::spinOnce();

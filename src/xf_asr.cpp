@@ -141,7 +141,7 @@ int test_sm() {
 
 using namespace std;
 //static string result;
-static bool sys_locked = false;
+static bool sys_locked = true;
 static bool speech_end = false;
 static bool playing = false;
 static int asr_flag = 0;
@@ -206,7 +206,7 @@ static void on_result(const char *result, char is_last)
 
 static void on_speech_begin()
 {
-	ROS_INFO("+%s %p", __func__, g_result);
+	ROS_INFO("+%s g_result=%p", __func__, g_result);
 	if (g_result) {
 		free(g_result);
 		g_result = NULL;
@@ -216,7 +216,7 @@ static void on_speech_begin()
 	memset(g_result, 0, g_buffersize);
 
 	speech_end = false;
-	ROS_INFO("-%s %p\n", __func__, g_result);
+	ROS_INFO("-%s g_result=%p\n", __func__, g_result);
 }
 
 static void on_speech_end(int reason)
@@ -275,7 +275,7 @@ static void demo_mic(const char* session_begin_params)
 static void asrProcess()
 #ifdef OFFLINE_TEST
 {
-	ROS_INFO("+%s fake g_result=%p\n", __func__, g_result);
+	ROS_INFO("+****%s fake g_result=%p\n", __func__, g_result);
 	if (g_result) {
 		free(g_result);
 		g_result = NULL;
@@ -305,8 +305,8 @@ static void asrProcess()
 		"accent = mandarin, sample_rate = 16000, "
 		"result_type = plain, result_encoding = utf8";
 
-	ROS_INFO("+%s", __func__);
-
+	ROS_INFO("+******%s g_result=%p", __func__, g_result);
+	asr_flag = 0;
 	if (g_result) {
 		free(g_result);
 		g_result = NULL;
@@ -334,7 +334,7 @@ static void asrProcess()
 	demo_mic(session_begin_params);
 
 exit:
-	ROS_INFO("-%s logout", __func__);
+	ROS_INFO("-%s g_result=%p", __func__, g_result);
 	MSPLogout(); // Logout...
 
 }
@@ -481,7 +481,8 @@ int main(int argc, char* argv[])
     ros::Subscriber sub_ttsplay = n.subscribe("/voice/xf_tts_playing", 50, ttsplayCallback);
 	
 	// publish to tts, play back the received voice
-	ros::Publisher pub_tts = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
+	// switch to use service API, discard the pub
+	//ros::Publisher pub_tts = n.advertise<std_msgs::String>("/voice/xf_tts_topic", 10);
 
 	ros::Publisher pub_text = n.advertise<std_msgs::String>("/voice/tuling_nlu_topic", 50);
 
@@ -612,7 +613,7 @@ int main(int argc, char* argv[])
 								current_sm = CURRENT_IDLE;
 								pub_cmd.publish(cmd_msg);
 							}
-						case 5: // bye-bye start FR, and stop all other running tasks
+						case 5: // bye-bye system lock and start FR, and stop all other running tasks
 							if (current_sm == CURRENT_VSLAM) {
 								// stop VSLAM
 								cmd_msg.data = 4;
@@ -624,6 +625,7 @@ int main(int argc, char* argv[])
 								pub_cmd.publish(cmd_msg);	
 							}
 							current_sm = CURRENT_IDLE;
+							sys_locked = true;
 							sleep(1); // make sure tasks are stop
 							cmd_msg.data = code;
 							pub_cmd.publish(cmd_msg); // start FR task
@@ -699,13 +701,13 @@ int main(int argc, char* argv[])
 				msg_tts.data = tts_content;
 				//pub_tts.publish(msg_tts);
 				//playing = true;
-				pub_text.publish(msg);
+				pub_text.publish(msg); // send to tuling
 				//sleep(8);
 				srv.request.target = tts_content;
 				if (client.call(srv)) {
-					ROS_INFO("call service okay");
+					ROS_INFO("ASR call service okay");
 				} else {
-					ROS_INFO("call service fail");
+					ROS_INFO("ASR call service fail");
 				}
 			}
 
