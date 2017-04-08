@@ -21,6 +21,8 @@
 #include "msp_errors.h"
 #include "speech_recognizer.h"
 #include "voice_system/TTSService.h"
+#include "demo_od/ObjectDetect.h"
+
 
 enum state_codes { entry, foo, bar, end, fail_code};
 enum ret_codes { ok, fail, repeat};
@@ -468,6 +470,12 @@ int main(int argc, char* argv[])
 
 	ros::NodeHandle n;
 
+	// TTS service call 
+	ros::ServiceClient od_client = n.serviceClient<demo_od::ObjectDetect>("od_service");
+	demo_od::ObjectDetect od_srv;
+
+
+	// TTS service call 
 	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
 	voice_system::TTSService srv;
 
@@ -501,7 +509,19 @@ int main(int argc, char* argv[])
 	while (ros::ok())
 	{
 
-		if (0) { // service test
+		if (0) { // od service test
+			od_srv.request.target = "apple";
+			if (od_client.call(od_srv)) {
+				ROS_INFO("call OD service okay");
+			} else {
+				ROS_INFO("call OD service fail");
+			}
+			ROS_INFO("x,y,z=%f-%f-%f result=%d", od_srv.response.x, 
+				od_srv.response.y, od_srv.response.z, od_srv.response.result);
+			continue;
+		}
+
+		if (0) { // tts service test
 			srv.request.target = "service";
 			if (client.call(srv)) {
 				ROS_INFO("call service okay");
@@ -526,6 +546,8 @@ int main(int argc, char* argv[])
 			//continue;
 		}
 		// get voice result
+		ROS_INFO("asr_flag=%d current_sm=%d sys_locked=%d g_result=%p-%d", 
+			asr_flag, current_sm, sys_locked, strlen(g_result));
 		if (asr_flag)
 		{
 			std_msgs::String msg;
