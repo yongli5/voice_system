@@ -143,7 +143,9 @@ int test_sm() {
 
 using namespace std;
 //static string result;
-static bool sys_locked = true;
+
+// sys status -1=undef, 0=sys unlock, 1=sys locked
+static int sys_locked = -1;
 static bool speech_end = false;
 static bool playing = false;
 static int asr_flag = 0;
@@ -357,15 +359,15 @@ static void asrCallback(const std_msgs::Int32::ConstPtr& msg)
 
 static void faceCallback(const std_msgs::Int8::ConstPtr& msg)
 {
-	ROS_INFO("+%s %d", __func__, msg->data);
+	ROS_INFO("+%s %d sys_locked=%d", __func__, msg->data, sys_locked);
 
 	if (msg->data == SYS_AUTH) {
-		sys_locked = false;
+		sys_locked = 0;
 	} else {
-		sys_locked = true;
+		sys_locked = 1;
 	}
 
-	ROS_INFO("-%s", __func__);
+	ROS_INFO("-%s sys_locked=%d", __func__, sys_locked);
 }
 
 static void ttsplayCallback(const std_msgs::Int32::ConstPtr& msg)
@@ -465,6 +467,9 @@ int main(int argc, char* argv[])
 
 	char tts_content[255];
 	int code = 0;
+	static int played = 0;
+	// play back the received voice
+	std_msgs::String msg_tts;
 	//std::cout << "asr start ..." << endl; 
     ros::init(argc, argv, "xf_asr_node");
 
@@ -532,7 +537,40 @@ int main(int argc, char* argv[])
 		}
 	
 		// listen .. 
-		asrProcess();
+		if (sys_locked == 1) {
+			//ROS_INFO("sys_locked, skip voice!");
+			if (played == 0) {
+				played = 1;
+				memset(tts_content, 0, sizeof(tts_content));
+				strcat(tts_content, "认证失败！系统被锁定");
+				msg_tts.data = tts_content;
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}				
+			}
+			//continue;			
+		}
+		else if (sys_locked == 0) { // FR PASS
+			if (played == 1) {
+				played = 0;
+				memset(tts_content, 0, sizeof(tts_content));
+				strcat(tts_content, "认证通过！欢迎使用ROS机器人");
+				msg_tts.data = tts_content;
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}				
+			}
+			asrProcess();
+		} else {
+			ROS_INFO("sys_locked=%d", sys_locked);
+		}
+		
 		if (0)
 		{	// rostopic pub -v -1 /mobile_base/commands/velocity geometry_msgs/Twist -- '[0.1,0,0]' '[0,0,0]'
 			ROS_INFO("move...");
@@ -546,8 +584,8 @@ int main(int argc, char* argv[])
 			//continue;
 		}
 		// get voice result
-		ROS_INFO("asr_flag=%d current_sm=%d sys_locked=%d g_result=%p-%d", 
-			asr_flag, current_sm, sys_locked, strlen(g_result));
+		ROS_INFO("asr_flag=%d current_sm=%d sys_locked=%d g_result=%p", 
+			asr_flag, current_sm, sys_locked, g_result);
 		if (asr_flag)
 		{
 			std_msgs::String msg;
@@ -555,11 +593,9 @@ int main(int argc, char* argv[])
 
 			if ((g_result == NULL) || (strlen(g_result) < 2)) {
 				ROS_INFO("no voice detected");
-				continue;
+				goto DONE;
 			}
-
-			// play back the received voice
-			std_msgs::String msg_tts;
+#if 0			
 			// if system is locked, ignore voice input too
 			if (sys_locked) 
 			{
@@ -579,7 +615,7 @@ int main(int argc, char* argv[])
 				}
 				continue;
 			}
-
+#endif
 			msg.data = g_result;
 
 			code = search_command(g_result);
@@ -647,7 +683,12 @@ int main(int argc, char* argv[])
 								pub_cmd.publish(cmd_msg);	
 							}
 							current_sm = CURRENT_IDLE;
-							sys_locked = true;
+							sys_locked = -1;
+							asr_flag = 0;
+							if (g_result) {
+								free(g_result);
+								g_result = NULL;
+							}
 							sleep(1); // make sure tasks are stop
 							cmd_msg.data = code;
 							pub_cmd.publish(cmd_msg); // start FR task
@@ -679,7 +720,7 @@ int main(int argc, char* argv[])
 					 // send to other modules
 				} else { // control commands
 					if ((current_sm == CURRENT_MOVING)
-						|| (current_sm = CURRENT_IDLE)) {
+						|| (current_sm == CURRENT_IDLE)) {
 						ROS_INFO("move %d...", code);
 						input_vel.linear.x=0.0; //forward/back
 						input_vel.linear.y=0.0;
@@ -738,6 +779,7 @@ int main(int argc, char* argv[])
 		}else {
 			ROS_INFO("asr_flag=false");
 		}
+DONE:		
 		loop_rate.sleep();
         ros::spinOnce();
 	 }
