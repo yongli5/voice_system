@@ -359,7 +359,7 @@ static void asrCallback(const std_msgs::Int32::ConstPtr& msg)
 
 static void faceCallback(const std_msgs::Int8::ConstPtr& msg)
 {
-	ROS_INFO("+%s %d sys_locked=%d", __func__, msg->data, sys_locked);
+	ROS_INFO("+%s msg=%d sys_locked=%d", __func__, msg->data, sys_locked);
 
 	if (msg->data == SYS_AUTH) {
 		sys_locked = 0;
@@ -475,10 +475,6 @@ int main(int argc, char* argv[])
 
 	ros::NodeHandle n;
 
-	// TTS service call 
-	ros::ServiceClient od_client = n.serviceClient<demo_od::ObjectDetect>("od_service");
-	demo_od::ObjectDetect od_srv;
-
 
 	// TTS service call 
 	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
@@ -513,17 +509,23 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
-
-		if (0) { // od service test
-			od_srv.request.target = "apple";
-			if (od_client.call(od_srv)) {
+		if (1) { // od service test
+			// OD service call
+			ros::ServiceClient od_client = n.serviceClient<demo_od::ObjectDetect>("object_detect_wrapper");
+			demo_od::ObjectDetect od_srv;
+			demo_od::ObjectDetect::Request od_req;
+			demo_od::ObjectDetect::Response od_resp;
+	
+			od_req.target = "bottle";
+			if (od_client.call(od_req, od_resp)) {
 				ROS_INFO("call OD service okay");
 			} else {
 				ROS_INFO("call OD service fail");
 			}
-			ROS_INFO("x,y,z=%f-%f-%f result=%d", od_srv.response.x, 
-				od_srv.response.y, od_srv.response.z, od_srv.response.result);
-			continue;
+			ROS_INFO("x,y,z=%f-%f-%f result=%d", od_resp.x, 
+				od_resp.y, od_resp.z, od_resp.result);
+			//continue;
+			goto DONE;
 		}
 
 		if (0) { // tts service test
@@ -533,7 +535,8 @@ int main(int argc, char* argv[])
 			} else {
 				ROS_INFO("call service fail");
 			}
-			continue;
+			//continue;
+			goto DONE;
 		}
 	
 		// listen .. 
@@ -551,7 +554,7 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service fail");
 				}				
 			}
-			//continue;			
+			//continue;	
 		}
 		else if (sys_locked == 0) { // FR PASS
 			if (played == 1) {
@@ -564,7 +567,7 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service okay");
 				} else {
 					ROS_INFO("call service fail");
-				}				
+				}
 			}
 			asrProcess();
 		} else {
