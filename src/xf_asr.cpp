@@ -296,8 +296,8 @@ static void asrProcess()
 	g_buffersize = BUFFER_SIZE;
 	memset(g_result, 0, g_buffersize);
 
-	strcpy(g_result, "寻找瓶子");
-
+	//strcpy(g_result, "寻找瓶子");
+	strcpy(g_result, "机器人前进");
 	speech_end = false;
 	speech_end = true;
 	asr_flag = 1;
@@ -391,6 +391,8 @@ static void ttsplayCallback(const std_msgs::Int32::ConstPtr& msg)
 static void resultsCallback(const std_msgs::Int32::ConstPtr& msg)
 {
 	ROS_INFO("+%s %d", __func__, msg->data);
+	
+	// TODO PF error, stop PF
 
 	current_sm = CURRENT_IDLE;
 }
@@ -471,6 +473,7 @@ static int search_command(const char *command) {
 
 int main(int argc, char* argv[])
 {
+	char *found = NULL;
 	// OR xyz
 	std_msgs::Float32MultiArray OR_xyz;
 	// robot move 
@@ -569,7 +572,7 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service fail");
 				}
 			}
-			//continue;	
+			//continue;
 		}
 		else if (sys_locked == 0) { // FR PASS
 			if (played == 1) {
@@ -602,10 +605,8 @@ int main(int argc, char* argv[])
 			//continue;
 		}
 		// get voice result
-		ROS_INFO("asr_flag=%d current_sm=%d sys_locked=%d g_result=%p", 
-			asr_flag, current_sm, sys_locked, g_result);
-		if (asr_flag)
-		{
+		//ROS_INFO("asr_flag=%d current_sm=%d sys_locked=%d g_result=%p", asr_flag, current_sm, sys_locked, g_result);
+		if (asr_flag) {
 			std_msgs::String msg;
 			std_msgs::Int32 cmd_msg;
 
@@ -613,27 +614,22 @@ int main(int argc, char* argv[])
 				ROS_INFO("no voice detected");
 				goto DONE;
 			}
-#if 0			
-			// if system is locked, ignore voice input too
-			if (sys_locked) 
-			{
-				ROS_INFO("sys_locked, skip voice!");
-
-				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "收到 %s", g_result);
-				strcat(tts_content, "系统锁定 被忽略!");
-				msg_tts.data = tts_content;
-				//pub_tts.publish(msg_tts);
-				//sleep(6);
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call service okay");
-				} else {
-					ROS_INFO("call service fail");
-				}
-				continue;
+			
+			printf("voice=[%s]\n", g_result);
+			
+			if (strlen(g_result) > 32) {
+				ROS_INFO("too many commands");
+				goto DONE;
 			}
-#endif
+			
+			found = strstr(g_result, "机器");
+			if (found) {
+				// messages for robot
+			}
+			else {
+				ROS_INFO("skip ...");
+				goto DONE;
+			}
 			msg.data = g_result;
 
 			code = search_command(g_result);
@@ -798,7 +794,7 @@ int main(int argc, char* argv[])
 				ROS_INFO("Publish [%s]", msg.data.c_str());
 
 				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "未识别 %s 请机器人帮忙", g_result);
+				sprintf(tts_content, "未识别的命令，请机器人帮忙");
 				msg_tts.data = tts_content;
 				//pub_tts.publish(msg_tts);
 				//playing = true;
@@ -815,7 +811,7 @@ int main(int argc, char* argv[])
 			//speech_end = true;
 			//asr_flag =0;
 		}else {
-			ROS_INFO("asr_flag=false");
+			//ROS_INFO("asr_flag=false");
 		}
 DONE:		
 		loop_rate.sleep();
