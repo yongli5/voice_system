@@ -11,6 +11,7 @@
 #include <ros/console.h>
 #include <ros/assert.h>
 
+#include <std_msgs/Float32MultiArray.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Int8.h>
 #include <std_msgs/Int32.h>
@@ -158,9 +159,16 @@ struct st_command {
 	unsigned int code;
 };
 
+struct st_object_table {
+	char name1[255];
+	char name2[255];
+};
+
 static struct st_command voice_commands[255];
 
-static char *test_commands[] = {"start", "stop"};
+static struct st_object_table  objects[] = {
+	{"瓶子", "bottle"}, {"瓶子2", "bottle2"}, {"", ""}
+};
 
 static void show_result(char *str, char is_over)
 {
@@ -288,7 +296,7 @@ static void asrProcess()
 	g_buffersize = BUFFER_SIZE;
 	memset(g_result, 0, g_buffersize);
 
-	strcpy(g_result, "左");
+	strcpy(g_result, "寻找瓶子");
 
 	speech_end = false;
 	speech_end = true;
@@ -463,6 +471,9 @@ static int search_command(const char *command) {
 
 int main(int argc, char* argv[])
 {
+	// OR xyz
+	std_msgs::Float32MultiArray OR_xyz;
+	// robot move 
 	geometry_msgs::Twist input_vel;
 
 	char tts_content[255];
@@ -474,7 +485,12 @@ int main(int argc, char* argv[])
     ros::init(argc, argv, "xf_asr_node");
 
 	ros::NodeHandle n;
-
+	
+	// OD service call 
+	ros::ServiceClient od_client = n.serviceClient<demo_od::ObjectDetect>("object_detect_wrapper");
+	demo_od::ObjectDetect od_srv;
+	demo_od::ObjectDetect::Request od_req;
+	demo_od::ObjectDetect::Response od_resp;
 
 	// TTS service call 
 	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
@@ -501,6 +517,10 @@ int main(int argc, char* argv[])
 	// control the robot
 	ros::Publisher pub_robot = n.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity", 1000); 
 
+	// publish for ARM
+	ros::Publisher pub_arm = n.advertise<std_msgs::Float32MultiArray>("/voice/manipulate_topic", 50);
+
+
 	ros::Rate loop_rate(10);
 
 	ROS_INFO("start listen ...");
@@ -509,13 +529,8 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
-		if (1) { // od service test
-			// OD service call
-			ros::ServiceClient od_client = n.serviceClient<demo_od::ObjectDetect>("object_detect_wrapper");
-			demo_od::ObjectDetect od_srv;
-			demo_od::ObjectDetect::Request od_req;
-			demo_od::ObjectDetect::Response od_resp;
-	
+		if (0) { // od service test
+			// OD service call rosservice call /object_detect_wrapper "target: 'bottle'"
 			od_req.target = "bottle";
 			if (od_client.call(od_req, od_resp)) {
 				ROS_INFO("call OD service okay");
@@ -552,7 +567,7 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service okay");
 				} else {
 					ROS_INFO("call service fail");
-				}				
+				}
 			}
 			//continue;	
 		}
@@ -715,13 +730,33 @@ int main(int argc, char* argv[])
 							}
 							break;
 						case 9:// OR
-							// TODO
+						{
+							char *found_object = NULL;
+							int i = 0;
+							i = 0;
+							while (strlen(objects[i].name1)) {
+								ROS_INFO("%s-%s\n", objects[i].name1, objects[i].name2);
+							    found_object = strstr(g_result, objects[i].name1);
+								if (found_object) {
+									od_req.target = objects[i].name2; 
+									if (od_client.call(od_req, od_resp)) {
+									ROS_INFO("call OD service okay");
+								} else {
+									ROS_INFO("call OD service fail");
+								}
+								ROS_INFO("x,y,z=%f-%f-%f result=%d", od_resp.x, 
+									od_resp.y, od_resp.z, od_resp.result);
+									//break;
+								}
+								i++;
+							}
 							break;
+						}
 						default:
 							break;
 					}
-					 // send to other modules
-				} else { // control commands
+					
+				} else { // code > 100, control commands
 					if ((current_sm == CURRENT_MOVING)
 						|| (current_sm == CURRENT_IDLE)) {
 						ROS_INFO("move %d...", code);
@@ -758,7 +793,7 @@ int main(int argc, char* argv[])
 				} else {
 					ROS_INFO("call service fail");
 				}
-			} else { // send to tuling
+			} else { // unknown code, send to tuling
 				printf("publish [%s]\n", g_result);
 				ROS_INFO("Publish [%s]", msg.data.c_str());
 
