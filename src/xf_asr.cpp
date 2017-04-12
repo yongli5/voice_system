@@ -78,6 +78,24 @@ static enum ret_codes exit_state(void)
 /* array and enum below must be in sync! */
 FUNC *state[] = {entry_state, foo_state, bar_state, exit_state};
 
+char *includeStr(char s[], char t[]) {
+    int i,j,k;
+    for(i = 0; s[i]; ++i) {
+        if(s[i] == t[0]) {
+            k = i + 1;
+            for(j = 1; t[j] == s[k] && s[k] && t[j]; ++k,++j);
+            if(t[j] == '\0') return s + i;
+        }
+    }
+    return 0;
+}
+ 
+void delStr(char s[], char t[]) {
+    char *p;
+    while(p = includeStr(s,t))
+        strcpy(p,p + strlen(t));
+}
+
 // return dst_state
 static enum state_codes lookup_transitions(enum state_codes cur_state, enum ret_codes rc) 
 {
@@ -620,7 +638,7 @@ int main(int argc, char* argv[])
 			
 			printf("voice=[%s]\n", g_result);
 			
-			if (strlen(g_result) > 32) {
+			if (strlen(g_result) > 100) {
 				ROS_INFO("too many commands");
 				goto DONE;
 			}
@@ -654,7 +672,7 @@ int main(int argc, char* argv[])
 				ROS_INFO("Publish command [%d]", code);
 
 				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "执行命令 %s", g_result);
+				sprintf(tts_content, "执行命令");
 				msg_tts.data = tts_content;
 				
 				//pub_tts.publish(msg_tts); // playback
@@ -796,22 +814,13 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service fail");
 				}
 			} else { // unknown code, send to tuling
-				printf("publish [%s]\n", g_result);
-				ROS_INFO("Publish [%s]", msg.data.c_str());
-
-				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "未识别的命令，请机器人帮忙");
-				msg_tts.data = tts_content;
-				//pub_tts.publish(msg_tts);
-				//playing = true;
-				pub_text.publish(msg); // send to tuling
+				printf("pre-publish [%s]\n", g_result);
+				delStr(g_result, "机器人");
+				printf("publish to tuling [%s]\n", g_result);
+				//deleteChars(g_result, "机器人");
+				msg.data = g_result;
+			        pub_text.publish(msg); // send to tuling
 				//sleep(8);
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("ASR call service okay");
-				} else {
-					ROS_INFO("ASR call service fail");
-				}
 			}
 
 			//speech_end = true;
