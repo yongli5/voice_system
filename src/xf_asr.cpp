@@ -576,6 +576,12 @@ int main(int argc, char* argv[])
 			goto DONE;
 		}
 	
+	
+		if (g_result) {
+			free(g_result);
+			g_result = NULL;
+		}
+	
 		// listen .. 
 		if (sys_locked == 1) {
 			//ROS_INFO("sys_locked, skip voice!");
@@ -643,14 +649,18 @@ int main(int argc, char* argv[])
 				goto DONE;
 			}
 			
-			found = strstr(g_result, "机器");
+			found = strstr(g_result, "机器人");
 			if (found) {
-				// messages for robot
+				// messages for robot get content
+				delStr(g_result, "机器人");
+				printf("voice_command=[%s]\n", g_result);
 			}
+
 			else {
 				ROS_INFO("skip ...");
 				goto DONE;
 			}
+
 			msg.data = g_result;
 
 			code = search_command(g_result);
@@ -672,7 +682,7 @@ int main(int argc, char* argv[])
 				ROS_INFO("Publish command [%d]", code);
 
 				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "执行命令");
+				sprintf(tts_content, "执行命令 %s", g_result);
 				msg_tts.data = tts_content;
 				
 				//pub_tts.publish(msg_tts); // playback
@@ -788,10 +798,10 @@ int main(int argc, char* argv[])
 						input_vel.angular.z=0.0; //left/right
 						switch (code) {
 							case 300:
-								input_vel.angular.z = 0.3;
+								input_vel.angular.z = 0.9;
 								break;
 							case 400:
-								input_vel.angular.z = -0.3;
+								input_vel.angular.z = -0.9;
 								break;
 							case 500:
 								input_vel.linear.x = 0.3;
@@ -814,12 +824,12 @@ int main(int argc, char* argv[])
 					ROS_INFO("call service fail");
 				}
 			} else { // unknown code, send to tuling
-				printf("pre-publish [%s]\n", g_result);
-				delStr(g_result, "机器人");
-				printf("publish to tuling [%s]\n", g_result);
+				//printf("pre-publish [%s]\n", g_result);
+				//delStr(g_result, "机器人");
+				//printf("publish to tuling [%s]\n", g_result);
 				//deleteChars(g_result, "机器人");
 				msg.data = g_result;
-			        pub_text.publish(msg); // send to tuling
+			    pub_text.publish(msg); // send to tuling
 				//sleep(8);
 			}
 

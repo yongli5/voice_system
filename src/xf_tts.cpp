@@ -182,12 +182,13 @@ exit:
 void playWav()
 {
 	// make sure the mic is umte first use amixer -c1 controls to list the controls
-  //system("amixer -c 1 cset numid=3,iface=MIXER,name='Headset Capture Switch' off");
+	system("amixer -c 1 cset numid=3,iface=MIXER,name='Headset Capture Switch' off");
 	system("amixer -c 1 cset numid=7,iface=MIXER,name='Mic Capture Switch' off");
 	ROS_INFO("Start play...");
 	system("play /tmp/voice.wav");
 	ROS_INFO("End play...");
 	system("amixer -c 1 cset numid=7,iface=MIXER,name='Mic Capture Switch' on");
+	system("amixer -c 1 cset numid=3,iface=MIXER,name='Headset Capture Switch' on");
 }
 
 static void ttsCallback(const std_msgs::String::ConstPtr& msg)
