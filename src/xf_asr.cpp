@@ -481,7 +481,8 @@ int main(int argc, char* argv[])
 
 	char tts_content[255];
 	int code = 0;
-	static int played = 0;
+	static int locked_played = 0;
+	static int unlocked_played = 0;
 	// play back the received voice
 	std_msgs::String msg_tts;
 	//std::cout << "asr start ..." << endl; 
@@ -560,8 +561,8 @@ int main(int argc, char* argv[])
 		// listen .. 
 		if (sys_locked == 1) {
 			//ROS_INFO("sys_locked, skip voice!");
-			if (played == 0) {
-				played = 1;
+			if (locked_played == 0) {
+				locked_played = 1;
 				memset(tts_content, 0, sizeof(tts_content));
 				strcat(tts_content, "认证失败！系统被锁定");
 				msg_tts.data = tts_content;
@@ -575,8 +576,8 @@ int main(int argc, char* argv[])
 			//continue;
 		}
 		else if (sys_locked == 0) { // FR PASS
-			if (played == 1) {
-				played = 0;
+			if (unlocked_played == 0) {
+				unlocked_played = 1;
 				memset(tts_content, 0, sizeof(tts_content));
 				strcat(tts_content, "认证通过！欢迎使用ROS机器人");
 				msg_tts.data = tts_content;
@@ -586,6 +587,8 @@ int main(int argc, char* argv[])
 				} else {
 					ROS_INFO("call service fail");
 				}
+			} else {
+				
 			}
 			asrProcess();
 		} else {
@@ -685,6 +688,7 @@ int main(int argc, char* argv[])
 								current_sm = CURRENT_IDLE;
 								pub_cmd.publish(cmd_msg);
 							}
+							break;
 						case 5: // bye-bye system lock and start FR, and stop all other running tasks
 							if (current_sm == CURRENT_VSLAM) {
 								// stop VSLAM
@@ -699,6 +703,8 @@ int main(int argc, char* argv[])
 							current_sm = CURRENT_IDLE;
 							sys_locked = -1;
 							asr_flag = 0;
+							locked_played = 0;
+							unlocked_played = 0;
 							if (g_result) {
 								free(g_result);
 								g_result = NULL;
