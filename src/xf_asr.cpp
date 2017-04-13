@@ -16,6 +16,7 @@
 #include <std_msgs/Int8.h>
 #include <std_msgs/Int32.h>
 #include <geometry_msgs/Twist.h>
+#include <kobuki_msgs/Led.h>
 
 #include "qisr.h"
 #include "msp_cmn.h"
@@ -497,8 +498,12 @@ int main(int argc, char* argv[])
 	// robot move 
 	geometry_msgs::Twist input_vel;
 
+	// robot led
+	kobuki_msgs::Led  robot_led;
+
 	char tts_content[255];
 	int code = 0;
+	int i = 0;
 	static int locked_played = 0;
 	static int unlocked_played = 0;
 	// play back the received voice
@@ -536,9 +541,12 @@ int main(int argc, char* argv[])
 	// command for other modules
 	ros::Publisher pub_cmd = n.advertise<std_msgs::Int32>("/voice/cmd_topic", 50);
 
-	// control the robot
+	// control the robot move
 	ros::Publisher pub_robot = n.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity", 1000); 
 
+	// control the LED on robot kobuki_msgs/Led
+ 	ros::Publisher pub_robot_led = n.advertise<kobuki_msgs::Led>("/mobile_base/commands/led1", 10);
+	   
 	// publish for ARM
 	ros::Publisher pub_arm = n.advertise<std_msgs::Float32MultiArray>("/voice/manipulate_topic", 50);
 
@@ -551,6 +559,15 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
+		if (0) { // LED test
+			ROS_INFO("i=%d", i);
+			robot_led.value = i; //kobuki_msgs::Led::RED;
+			pub_robot_led.publish(robot_led);
+			i++;
+			if (i > 3) i = 0; 
+			goto DONE;
+		}
+	
 		if (0) { // od service test
 			// OD service call rosservice call /object_detect_wrapper "target: 'bottle'"
 			od_req.target = "bottle";
@@ -614,7 +631,12 @@ int main(int argc, char* argv[])
 			} else {
 				
 			}
+			// use the lED for mic 
+			robot_led.value = kobuki_msgs::Led::RED;
+			pub_robot_led.publish(robot_led);
 			asrProcess();
+			robot_led.value = kobuki_msgs::Led::BLACK;
+			pub_robot_led.publish(robot_led);
 		} else {
 			ROS_INFO("sys_locked=%d", sys_locked);
 		}
