@@ -559,6 +559,15 @@ int main(int argc, char* argv[])
 	//std::cout << "start listen ..." << endl;
 	while (ros::ok())
 	{
+		if (0) {
+			OR_xyz.data.clear();
+			OR_xyz.data.push_back(1);
+			OR_xyz.data.push_back(2);
+			OR_xyz.data.push_back(3);
+			pub_arm.publish(OR_xyz);
+			goto DONE;
+		}
+		
 		if (0) { // LED test
 			ROS_INFO("i=%d", i);
 			robot_led.value = i; //kobuki_msgs::Led::RED;
@@ -796,9 +805,14 @@ int main(int argc, char* argv[])
 								} else {
 									ROS_INFO("call OD service fail");
 								}
-								ROS_INFO("x,y,z=%f-%f-%f result=%d", od_resp.x, 
+								ROS_INFO("Send to ARM x,y,z=%f-%f-%f result=%d", od_resp.x, 
 									od_resp.y, od_resp.z, od_resp.result);
 									//break;
+									OR_xyz.data.clear();
+									OR_xyz.data.push_back(od_resp.x);
+									OR_xyz.data.push_back(od_resp.y);
+									OR_xyz.data.push_back(od_resp.z);
+									pub_arm.publish(OR_xyz);
 								}
 								i++;
 							}
