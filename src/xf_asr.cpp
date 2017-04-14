@@ -186,7 +186,9 @@ struct st_object_table {
 static struct st_command voice_commands[255];
 
 static struct st_object_table  objects[] = {
-	{"瓶子", "bottle"}, {"瓶子2", "bottle2"}, {"", ""}
+	{"瓶子", "bottle"}, {"背包", "bag"}, 
+	{"玩具", "toys"}, {"水杯", "cup"},
+	{"椅子", "chair"}, {"显示器", "monitor"}
 };
 
 static void show_result(char *str, char is_over)
@@ -315,8 +317,8 @@ static void asrProcess()
 	g_buffersize = BUFFER_SIZE;
 	memset(g_result, 0, g_buffersize);
 
-	//strcpy(g_result, "寻找瓶子");
-	strcpy(g_result, "机器人前进");
+	strcpy(g_result, "机器人寻找玩具");
+	//strcpy(g_result, "机器人前进");
 	speech_end = false;
 	speech_end = true;
 	asr_flag = 1;
@@ -669,7 +671,7 @@ int main(int argc, char* argv[])
 			std_msgs::Int32 cmd_msg;
 
 			if ((g_result == NULL) || (strlen(g_result) < 2)) {
-				ROS_INFO("no voice detected");
+				ROS_INFO("no voice detected g_result=%p", g_result);
 				goto DONE;
 			}
 			
@@ -713,7 +715,7 @@ int main(int argc, char* argv[])
 				ROS_INFO("Publish command [%d]", code);
 
 				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "执行命令 %s", g_result);
+				sprintf(tts_content, "已执行命令 %s", g_result);
 				msg_tts.data = tts_content;
 				
 				//pub_tts.publish(msg_tts); // playback
@@ -792,27 +794,56 @@ int main(int argc, char* argv[])
 							break;
 						case 9:// OR
 						{
+							char object_finding[255];
 							char *found_object = NULL;
 							int i = 0;
 							i = 0;
+							// start to find object TTS
+							#if 0
+							memset(object_finding, 0, sizeof(object_finding));
+							strcat(object_finding, "正在寻找...");
+							msg_tts.data = object_finding;
+							srv.request.target = object_finding;
+							if (client.call(srv)) {
+								ROS_INFO("call service okay");
+							} else {
+								ROS_INFO("call service fail");
+							}
+							#endif
 							while (strlen(objects[i].name1)) {
 								ROS_INFO("%s-%s\n", objects[i].name1, objects[i].name2);
+								printf("%s-%s\n", objects[i].name1, objects[i].name2);
 							    found_object = strstr(g_result, objects[i].name1);
 								if (found_object) {
 									od_req.target = objects[i].name2; 
 									if (od_client.call(od_req, od_resp)) {
-									ROS_INFO("call OD service okay");
-								} else {
-									ROS_INFO("call OD service fail");
-								}
-								ROS_INFO("Send to ARM x,y,z=%f-%f-%f result=%d", od_resp.x, 
-									od_resp.y, od_resp.z, od_resp.result);
+										ROS_INFO("call OD service okay");
+									} else {
+										ROS_INFO("call OD service fail");
+									}
+									ROS_INFO("Send to ARM x,y,z=%f-%f-%f result=%d", od_resp.x, 
+										od_resp.y, od_resp.z, od_resp.result);
 									//break;
-									OR_xyz.data.clear();
-									OR_xyz.data.push_back(od_resp.x);
-									OR_xyz.data.push_back(od_resp.y);
-									OR_xyz.data.push_back(od_resp.z);
+									memset(object_finding, 0, sizeof(object_finding));
+									
+									if (od_resp.result) {
+										strcat(object_finding, "已找到...");
+										OR_xyz.data.clear();
+										OR_xyz.data.push_back(od_resp.x);
+										OR_xyz.data.push_back(od_resp.y);
+										OR_xyz.data.push_back(od_resp.z);
 									pub_arm.publish(OR_xyz);
+									} else {
+										strcat(object_finding, "未找到...");
+									}
+									msg_tts.data = object_finding;
+									srv.request.target = object_finding;
+									if (client.call(srv)) {
+										ROS_INFO("call service okay");
+									} else {
+									ROS_INFO("call service fail");
+								}
+									
 								}
 								i++;
 							}
@@ -840,10 +871,10 @@ int main(int argc, char* argv[])
 								input_vel.angular.z = -0.9;
 								break;
 							case 500:
-								input_vel.linear.x = 0.3;
+								input_vel.linear.x = 0.2;
 								break;
 							case 600:
-								input_vel.linear.x = -0.3;
+								input_vel.linear.x = -0.2;
 								break;
 							default:
 								break;
@@ -853,11 +884,15 @@ int main(int argc, char* argv[])
 					}
 				}
 				//sleep(8);
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call service okay");
+				if (code == 9) {
+					// no tts output
 				} else {
-					ROS_INFO("call service fail");
+					srv.request.target = tts_content;
+					if (client.call(srv)) {
+						ROS_INFO("call TTS service okay");
+					} else {
+						ROS_INFO("call TTS service fail");
+					}
 				}
 			} else { // unknown code, send to tuling
 				//printf("pre-publish [%s]\n", g_result);
