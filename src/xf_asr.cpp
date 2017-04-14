@@ -492,6 +492,25 @@ static int search_command(const char *command) {
 	return code;
 }
 
+static int search_command_index(const int code) {
+	int i = 0;
+	
+	printf("+%s [%d]\n", __func__, code);
+
+	i = 0;
+	while (0 != strlen(voice_commands[i].command)) {
+		printf("%d=[%s]\n", i, voice_commands[i].command);
+		if (code == voice_commands[i].code) {
+			printf("%s find code %d at %d\n", __func__, code, i);
+			return i;
+		}
+		i++;
+	}
+
+	printf("%s cannot find code %d\n", __func__, code);
+	return -1;
+}
+
 int main(int argc, char* argv[])
 {
 	char *found = NULL;
@@ -505,6 +524,7 @@ int main(int argc, char* argv[])
 
 	char tts_content[255];
 	int code = 0;
+	int index = 0;
 	int i = 0;
 	static int locked_played = 0;
 	static int unlocked_played = 0;
@@ -617,12 +637,11 @@ int main(int argc, char* argv[])
 				locked_played = 1;
 				memset(tts_content, 0, sizeof(tts_content));
 				strcat(tts_content, "认证失败！系统被锁定");
-				msg_tts.data = tts_content;
 				srv.request.target = tts_content;
 				if (client.call(srv)) {
-					ROS_INFO("call service okay");
+					ROS_INFO("call TTS service okay");
 				} else {
-					ROS_INFO("call service fail");
+					ROS_INFO("call TTS service fail");
 				}
 			}
 			//continue;
@@ -632,7 +651,6 @@ int main(int argc, char* argv[])
 				unlocked_played = 1;
 				memset(tts_content, 0, sizeof(tts_content));
 				strcat(tts_content, "认证通过！欢迎使用ROS机器人");
-				msg_tts.data = tts_content;
 				srv.request.target = tts_content;
 				if (client.call(srv)) {
 					ROS_INFO("call service okay");
@@ -712,13 +730,17 @@ int main(int argc, char* argv[])
 			
 			if (code >= 0) { // the voice is a special command
 				cmd_msg.data = code;
-				ROS_INFO("Publish command [%d]", code);
-
+				index = search_command_index(code);
+				ROS_INFO("command [%d] index=%d", code, index);
+	
 				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "已执行命令 %s", g_result);
-				msg_tts.data = tts_content;
-				
-				//pub_tts.publish(msg_tts); // playback
+				sprintf(tts_content, "执行命令 %s", voice_commands[index].command);
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}
 
 				if (code <= 100) { // pf/vslam/or
 					switch (code) {
@@ -751,6 +773,7 @@ int main(int argc, char* argv[])
 							}
 							break;
 						case 5: // bye-bye system lock and start FR, and stop all other running tasks
+						case 51:
 							if (current_sm == CURRENT_VSLAM) {
 								// stop VSLAM
 								cmd_msg.data = 4;
@@ -775,6 +798,7 @@ int main(int argc, char* argv[])
 							pub_cmd.publish(cmd_msg); // start FR task
 							break;
 						case 6: // arm move
+						case 61:
 							//if (current_sm == CURRENT_IDLE) {
 								//current_sm = CURRENT_IDLE;
 								pub_cmd.publish(cmd_msg);
@@ -793,6 +817,8 @@ int main(int argc, char* argv[])
 							}
 							break;
 						case 9:// OR
+						case 91:
+						case 92:
 						{
 							char object_finding[255];
 							char *found_object = NULL;
@@ -802,12 +828,11 @@ int main(int argc, char* argv[])
 							#if 0
 							memset(object_finding, 0, sizeof(object_finding));
 							strcat(object_finding, "正在寻找...");
-							msg_tts.data = object_finding;
 							srv.request.target = object_finding;
 							if (client.call(srv)) {
-								ROS_INFO("call service okay");
+								ROS_INFO("call TTS service okay");
 							} else {
-								ROS_INFO("call service fail");
+								ROS_INFO("call TTS service fail");
 							}
 							#endif
 							while (strlen(objects[i].name1)) {
@@ -821,7 +846,7 @@ int main(int argc, char* argv[])
 									} else {
 										ROS_INFO("call OD service fail");
 									}
-									ROS_INFO("Send to ARM x,y,z=%f-%f-%f result=%d", od_resp.x, 
+									ROS_INFO("x,y,z=%f-%f-%f result=%d", od_resp.x, 
 										od_resp.y, od_resp.z, od_resp.result);
 									//break;
 									memset(object_finding, 0, sizeof(object_finding));
@@ -836,12 +861,11 @@ int main(int argc, char* argv[])
 									} else {
 										strcat(object_finding, "未找到...");
 									}
-									msg_tts.data = object_finding;
 									srv.request.target = object_finding;
 									if (client.call(srv)) {
-										ROS_INFO("call service okay");
+										ROS_INFO("call TTS service okay");
 									} else {
-									ROS_INFO("call service fail");
+									ROS_INFO("call TTS service fail");
 								}
 									
 								}
@@ -884,6 +908,7 @@ int main(int argc, char* argv[])
 					}
 				}
 				//sleep(8);
+				#if 0
 				if (code == 9) {
 					// no tts output
 				} else {
@@ -894,11 +919,13 @@ int main(int argc, char* argv[])
 						ROS_INFO("call TTS service fail");
 					}
 				}
+				#endif
 			} else { // unknown code, send to tuling
 				//printf("pre-publish [%s]\n", g_result);
 				//delStr(g_result, "机器人");
 				//printf("publish to tuling [%s]\n", g_result);
 				//deleteChars(g_result, "机器人");
+				// FIXME filter
 				msg.data = g_result;
 			    pub_text.publish(msg); // send to tuling
 				//sleep(8);
