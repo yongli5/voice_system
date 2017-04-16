@@ -17,6 +17,7 @@
 #include <std_msgs/Int32.h>
 #include <geometry_msgs/Twist.h>
 #include <kobuki_msgs/Led.h>
+#include <kobuki_msgs/Sound.h>
 
 #include "qisr.h"
 #include "msp_cmn.h"
@@ -521,6 +522,7 @@ int main(int argc, char* argv[])
 
 	// robot led
 	kobuki_msgs::Led  robot_led;
+	kobuki_msgs::Sound  robot_sound;
 
 	char tts_content[255];
 	int code = 0;
@@ -568,6 +570,9 @@ int main(int argc, char* argv[])
 
 	// control the LED on robot kobuki_msgs/Led
  	ros::Publisher pub_robot_led = n.advertise<kobuki_msgs::Led>("/mobile_base/commands/led1", 10);
+	
+	// control the sound on robot
+ 	ros::Publisher pub_robot_sound = n.advertise<kobuki_msgs::Sound>("/mobile_base/commands/sound", 10);
 	   
 	// publish for ARM
 	ros::Publisher pub_arm = n.advertise<std_msgs::Float32MultiArray>("/voice/manipulate_topic", 50);
@@ -590,6 +595,14 @@ int main(int argc, char* argv[])
 			goto DONE;
 		}
 		
+		if (0) { // sound test
+			ROS_INFO("i=%d", i);
+			robot_sound.value = i;
+			pub_robot_sound.publish(robot_sound);
+			i++;
+			if (i > 6) i = 0; 
+			goto DONE;
+		}		
 		if (0) { // LED test
 			ROS_INFO("i=%d", i);
 			robot_led.value = i; //kobuki_msgs::Led::RED;
@@ -660,7 +673,10 @@ int main(int argc, char* argv[])
 			} else {
 				
 			}
-			// use the lED for mic 
+			// use the LED/sound for mic start
+			robot_sound.value = 1;
+			pub_robot_sound.publish(robot_sound);
+			
 			robot_led.value = kobuki_msgs::Led::RED;
 			pub_robot_led.publish(robot_led);
 			asrProcess();
@@ -693,22 +709,35 @@ int main(int argc, char* argv[])
 				goto DONE;
 			}
 			
-			printf("voice=[%s]\n", g_result);
+			printf("voice=[%s] %zu\n", g_result, strlen(g_result));
 			
 			if (strlen(g_result) > 100) {
 				ROS_INFO("too many commands");
 				goto DONE;
 			}
 			
+			if (strlen(g_result) < 7) {
+				ROS_INFO("too short commands");
+				goto DONE;
+			}
+
 			found = strstr(g_result, "机器人");
 			if (found) {
 				// messages for robot get content
 				delStr(g_result, "机器人");
 				printf("voice_command=[%s]\n", g_result);
-			}
-
-			else {
+			} else {
 				ROS_INFO("skip ...");
+				#if 0
+				memset(tts_content, 0, sizeof(tts_content));
+				strcat(tts_content, "请再说一遍");
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call service okay");
+				} else {
+					ROS_INFO("call service fail");
+				}
+				#endif
 				goto DONE;
 			}
 
@@ -755,8 +784,10 @@ int main(int argc, char* argv[])
 							}
 							break;
 						case 2: // stop PF
+						case 21:
 							if (current_sm == CURRENT_PF) {
 								current_sm = CURRENT_IDLE;
+								cmd_msg.data = 2;
 								pub_cmd.publish(cmd_msg);
 							}
 							break;
@@ -794,13 +825,14 @@ int main(int argc, char* argv[])
 								g_result = NULL;
 							}
 							sleep(1); // make sure tasks are stop
-							cmd_msg.data = code;
+							cmd_msg.data = 5;
 							pub_cmd.publish(cmd_msg); // start FR task
 							break;
 						case 6: // arm move
 						case 61:
 							//if (current_sm == CURRENT_IDLE) {
 								//current_sm = CURRENT_IDLE;
+								cmd_msg.data = 6;
 								pub_cmd.publish(cmd_msg);
 							//}
 							break;
@@ -840,6 +872,7 @@ int main(int argc, char* argv[])
 								printf("%s-%s\n", objects[i].name1, objects[i].name2);
 							    found_object = strstr(g_result, objects[i].name1);
 								if (found_object) {
+									ROS_INFO("start find %s", objects[i].name2);
 									od_req.target = objects[i].name2; 
 									if (od_client.call(od_req, od_resp)) {
 										ROS_INFO("call OD service okay");
@@ -895,9 +928,11 @@ int main(int argc, char* argv[])
 								input_vel.angular.z = -0.9;
 								break;
 							case 500:
+							case 501:
 								input_vel.linear.x = 0.2;
 								break;
 							case 600:
+							case 601:
 								input_vel.linear.x = -0.2;
 								break;
 							default:
@@ -921,20 +956,77 @@ int main(int argc, char* argv[])
 				}
 				#endif
 			} else { // unknown code, send to tuling
-				//printf("pre-publish [%s]\n", g_result);
+				bool can_send = false;
+				printf("unknow code [%s]\n", g_result);
 				//delStr(g_result, "机器人");
 				//printf("publish to tuling [%s]\n", g_result);
 				//deleteChars(g_result, "机器人");
 				// FIXME filter
-				msg.data = g_result;
-			    pub_text.publish(msg); // send to tuling
+				found = strstr(g_result, "今天"); 
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "日期");
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "时间");
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "天气");
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "名字");
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "笑话");
+				if (found) {
+					can_send = true;
+				}
+				
+				found = strstr(g_result, "故事");
+				if (found) {
+					can_send = true;
+				}
+				
+				if (can_send) {
+					memset(tts_content, 0, sizeof(tts_content));
+					strcat(tts_content, "请稍等");
+					srv.request.target = tts_content;
+					if (client.call(srv)) {
+						ROS_INFO("call service okay");
+					} else {
+						ROS_INFO("call service fail");
+					}
+					msg.data = g_result;
+					pub_text.publish(msg); // send to tuling
+					goto DONE;
+				}
+				
+				{
+					memset(tts_content, 0, sizeof(tts_content));
+					strcat(tts_content, "请再说一遍");
+					srv.request.target = tts_content;
+					if (client.call(srv)) {
+						ROS_INFO("call service okay");
+					} else {
+						ROS_INFO("call service fail");
+					}
+				}
 				//sleep(8);
-			}
-
+			} // unknown code, send to tuling
 			//speech_end = true;
 			//asr_flag =0;
 		}else {
-			//ROS_INFO("asr_flag=false");
+			ROS_INFO("asr_flag=false");
 		}
 DONE:		
 		loop_rate.sleep();
