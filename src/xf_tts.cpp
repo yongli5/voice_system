@@ -144,7 +144,7 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 int TextToWav(const char* text, const char* filename)
 {
 	int         ret                  = MSP_SUCCESS; // 58d77a1a  
-	const char* login_params         = "appid = 58d87002, work_dir = .";//登录参数,appid与msc库绑定,请勿随意改动
+	const char* login_params         = "appid = 58e631a9, work_dir = .";//登录参数,appid与msc库绑定,请勿随意改动
 	/*
 	* rdn:           合成音频数字发音方式
 	* volume:        合成音频的音量

@@ -329,7 +329,7 @@ static void asrProcess()
 {
 	int ret = MSP_SUCCESS;
 	/* login params, please do keep the appid correct 58d77a1a*/
-	const char* login_params = "appid = 58d87002, work_dir = .";
+	const char* login_params = "appid = 58e631a9, work_dir = .";
 
 	/*
 	* See "iFlytek MSC Reference Manual"
@@ -419,6 +419,23 @@ static void resultsCallback(const std_msgs::Int32::ConstPtr& msg)
 	current_sm = CURRENT_IDLE;
 }
 
+static int get_control() {
+	int i = -1;
+	FILE *f;
+	int ret = 0;
+	f = fopen("/tmp/control", "r");
+
+    if (!f) {
+        printf("file open fail %d\n", errno);
+		return -1;
+    }
+
+	fscanf(f, "%d", &i);
+	printf("control=%d\n", i);
+	fclose(f);
+	return i;
+}
+
 // get voice txt- command list
 static int read_config() {
     char line[255];
@@ -435,6 +452,7 @@ static int read_config() {
 
     if (!f) {
         printf("file open fail %d\n", errno);
+		return -1;
     }
 
     //line = NULL;
@@ -528,6 +546,7 @@ int main(int argc, char* argv[])
 	int code = 0;
 	int index = 0;
 	int i = 0;
+	int control = 0;
 	static int locked_played = 0;
 	static int unlocked_played = 0;
 	// play back the received voice
@@ -709,8 +728,8 @@ int main(int argc, char* argv[])
 				goto DONE;
 			}
 			
-			printf("voice=[%s] %zu\n", g_result, strlen(g_result));
-			
+			printf("voice=[%s] len=%zu\n", g_result, strlen(g_result));
+						
 			if (strlen(g_result) > 100) {
 				ROS_INFO("too many commands");
 				goto DONE;
@@ -719,6 +738,16 @@ int main(int argc, char* argv[])
 			if (strlen(g_result) < 7) {
 				ROS_INFO("too short commands");
 				goto DONE;
+			}
+			
+			// add manual control
+			control = get_control();
+			if (control > -1) {
+				index = search_command_index(control);
+				ROS_INFO("control=%d index=%d", control, index);
+			    g_result = (char*)realloc(g_result, strlen(voice_commands[index].command) + 10);					
+				sprintf(g_result, "机器人%s", voice_commands[index].command);
+				printf("NEW voice=[%s] len=%zu\n", g_result, strlen(g_result));
 			}
 
 			found = strstr(g_result, "机器人");
@@ -762,13 +791,17 @@ int main(int argc, char* argv[])
 				index = search_command_index(code);
 				ROS_INFO("command [%d] index=%d", code, index);
 	
-				memset(tts_content, 0, sizeof(tts_content));
-				sprintf(tts_content, "执行命令 %s", voice_commands[index].command);
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call service okay");
+				if (code == 61) {
+					// no need to speak out
 				} else {
-					ROS_INFO("call service fail");
+					memset(tts_content, 0, sizeof(tts_content));
+					sprintf(tts_content, "执行命令 %s", voice_commands[index].command);
+					srv.request.target = tts_content;
+					if (client.call(srv)) {
+						ROS_INFO("call TTS service okay");
+					} else {
+						ROS_INFO("call TTS service fail");
+					}
 				}
 
 				if (code <= 100) { // pf/vslam/or
