@@ -728,7 +728,7 @@ int main(int argc, char* argv[])
 				goto DONE;
 			}
 			
-			printf("voice=[%s] len=%zu\n", g_result, strlen(g_result));
+			printf("voice=[%s] len=%zu current_sm=%d\n", g_result, strlen(g_result), current_sm);
 						
 			if (strlen(g_result) > 100) {
 				ROS_INFO("too many commands");
@@ -944,8 +944,11 @@ int main(int argc, char* argv[])
 					}
 					
 				} else { // code > 100, control commands
-					if ((current_sm == CURRENT_MOVING)
-						|| (current_sm == CURRENT_IDLE)) {
+					if ((current_sm == CURRENT_PF)
+						|| (current_sm == CURRENT_VSLAM)) {
+							ROS_INFO("CANNOT move %d", current_sm);
+						} 
+						else {
 						ROS_INFO("move %d...", code);
 						input_vel.linear.x=0.0; //forward/back
 						input_vel.linear.y=0.0;
