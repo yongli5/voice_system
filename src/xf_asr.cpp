@@ -165,6 +165,7 @@ int test_sm() {
 using namespace std;
 //static string result;
 
+static int voice_manual_code = -1;
 // sys status -1=undef, 0=sys unlock, 1=sys locked
 static int sys_locked = -1;
 static bool speech_end = false;
@@ -305,7 +306,20 @@ static void demo_mic(const char* session_begin_params)
 	sr_uninit(&iat);
 	ROS_INFO("-%s", __func__);
 }
-
+	 
+#define TTS_TEXT(_text) \
+ do { \
+	memset(tts_content, 0, sizeof(tts_content)); \
+	strcat(tts_content, _text); \
+	srv.request.target = tts_content; \
+	printf("TTS->[%s]\n", _text);\
+	if (client.call(srv)) { \
+	ROS_INFO("call TTS service okay"); \
+	} else { \
+		ROS_INFO("call TTS service fail"); \
+	} \
+ } while (0) 
+ 
 static void asrProcess()
 #ifdef OFFLINE_TEST
 {
@@ -387,6 +401,12 @@ static void asrCallback(const std_msgs::Int32::ConstPtr& msg)
 }
 #endif
 
+static void manualCallback(const std_msgs::Int32::ConstPtr& msg)
+{
+	ROS_INFO("+%s msg=%d", __func__, msg->data);
+	voice_manual_code = msg->data;	
+}
+
 static void faceCallback(const std_msgs::Int8::ConstPtr& msg)
 {
 	ROS_INFO("+%s msg=%d sys_locked=%d", __func__, msg->data, sys_locked);
@@ -426,7 +446,7 @@ static int get_control() {
 	f = fopen("/tmp/control", "r");
 
     if (!f) {
-        printf("file open fail %d\n", errno);
+        printf("%s file open fail %d\n", __func__, errno);
 		return -1;
     }
 
@@ -451,7 +471,7 @@ static int read_config() {
     f = fopen("/etc/commands.txt", "re");
 
     if (!f) {
-        printf("file open fail %d\n", errno);
+        printf("%s file open fail %d\n", __func__, errno);
 		return -1;
     }
 
@@ -497,7 +517,7 @@ static int search_command(const char *command) {
 	i = 0;
 	code = -1;
 	while (0 != strlen(voice_commands[i].command)) {
-		printf("%d=[%s]\n", i, voice_commands[i].command);
+		//printf("%d=[%s]\n", i, voice_commands[i].command);
 		found = strstr((char *)command, voice_commands[i].command);
 		if (found) {
 			printf("%s %d find [%s]-[%s] code=%d\n", __func__, i, command, voice_commands[i].command, voice_commands[i].code);
@@ -514,19 +534,19 @@ static int search_command(const char *command) {
 static int search_command_index(const int code) {
 	int i = 0;
 	
-	printf("+%s [%d]\n", __func__, code);
+	ROS_INFO("+%s [%d]\n", __func__, code);
 
 	i = 0;
 	while (0 != strlen(voice_commands[i].command)) {
-		printf("%d=[%s]\n", i, voice_commands[i].command);
+		//printf("%d=[%s]\n", i, voice_commands[i].command);
 		if (code == voice_commands[i].code) {
-			printf("%s find code %d at %d\n", __func__, code, i);
+			ROS_INFO("-%s find code %d at %d\n", __func__, code, i);
 			return i;
 		}
 		i++;
 	}
 
-	printf("%s cannot find code %d\n", __func__, code);
+	ROS_INFO("-%s cannot find code %d\n", __func__, code);
 	return -1;
 }
 
@@ -566,6 +586,8 @@ int main(int argc, char* argv[])
 	ros::ServiceClient client = n.serviceClient<voice_system::TTSService>("tts_service");
 	voice_system::TTSService srv;
 
+	ros::Subscriber sub_manual = n.subscribe("/voice/control", 50, manualCallback);
+		
     //ros::Subscriber sub = n.subscribe("/voice/xf_asr_topic", 50, asrCallback);
     ros::Subscriber sub = n.subscribe("/face/auth", 50, faceCallback);
 
@@ -595,11 +617,19 @@ int main(int argc, char* argv[])
 	   
 	// publish for ARM
 	ros::Publisher pub_arm = n.advertise<std_msgs::Float32MultiArray>("/voice/manipulate_topic", 50);
-
+	int manual_control = -1;
 
 	ros::Rate loop_rate(10);
 
-	ROS_INFO("start listen ...");
+	ROS_INFO("start listen ... argc=%d", argc);
+
+	if (argc == 2) {
+		manual_control = strtol(argv[1], NULL, 10);
+		if (manual_control > 0) {
+			manual_control = 1; // enable manual control
+			ROS_INFO("In MANUAL MODE...");
+		}
+	}
 
 	read_config();
 	//std::cout << "start listen ..." << endl;
@@ -646,16 +676,20 @@ int main(int argc, char* argv[])
 		}
 
 		if (0) { // tts service test
-			srv.request.target = "service";
-			if (client.call(srv)) {
-				ROS_INFO("call service okay");
-			} else {
-				ROS_INFO("call service fail");
-			}
-			//continue;
+			#if 1
+				TTS_TEXT("认证失败！系统被锁定");
+			#else
+				memset(tts_content, 0, sizeof(tts_content));
+				strcat(tts_content, "认证失败！系统被锁定");
+				srv.request.target = tts_content;
+				if (client.call(srv)) {
+					ROS_INFO("call TTS service okay");
+				} else {
+					ROS_INFO("call TTS service fail");
+				}
+			#endif
 			goto DONE;
 		}
-	
 	
 		if (g_result) {
 			free(g_result);
@@ -667,13 +701,10 @@ int main(int argc, char* argv[])
 			//ROS_INFO("sys_locked, skip voice!");
 			if (locked_played == 0) {
 				locked_played = 1;
-				memset(tts_content, 0, sizeof(tts_content));
-				strcat(tts_content, "认证失败！系统被锁定");
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call TTS service okay");
+				if (1 == manual_control) {
+					system("play /tmp/locked.wav");
 				} else {
-					ROS_INFO("call TTS service fail");
+					TTS_TEXT("认证失败！系统被锁定");			
 				}
 			}
 			//continue;
@@ -681,26 +712,44 @@ int main(int argc, char* argv[])
 		else if (sys_locked == 0) { // FR PASS
 			if (unlocked_played == 0) {
 				unlocked_played = 1;
-				memset(tts_content, 0, sizeof(tts_content));
-				strcat(tts_content, "认证通过！欢迎使用ROS机器人");
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call service okay");
+				if (1 == manual_control) {
+					system("play /tmp/unlocked.wav");
 				} else {
-					ROS_INFO("call service fail");
+					TTS_TEXT("认证通过！欢迎使用ROS机器人");
 				}
 			} else {
 				
 			}
-			// use the LED/sound for mic start
-			robot_sound.value = 1;
-			pub_robot_sound.publish(robot_sound);
-			
-			robot_led.value = kobuki_msgs::Led::RED;
-			pub_robot_led.publish(robot_led);
-			asrProcess();
-			robot_led.value = kobuki_msgs::Led::BLACK;
-			pub_robot_led.publish(robot_led);
+
+			if (manual_control == 1) {
+				// set g_result by manual_code;
+				if (voice_manual_code > -1) {
+					ROS_INFO("MANUALcode=%d", voice_manual_code);
+					asr_flag = 1;
+					index = search_command_index(voice_manual_code);
+					ROS_INFO("control=%d index=%d", voice_manual_code, index);
+				    g_result = (char*)realloc(g_result, strlen(voice_commands[index].command) + 10);					
+					sprintf(g_result, "机器人%s", voice_commands[index].command);
+					printf("NEW voice=[%s] len=%zu\n", g_result, strlen(g_result));
+					voice_manual_code = -1;
+				} else { // no vice input
+					asr_flag = 0;
+					if (g_result) {
+						free(g_result);
+						g_result = NULL;
+					}
+				}
+			} else {
+				// use the LED/sound for mic start
+				robot_sound.value = 1;
+				pub_robot_sound.publish(robot_sound);
+				
+				robot_led.value = kobuki_msgs::Led::RED;
+				pub_robot_led.publish(robot_led);
+				asrProcess();
+				robot_led.value = kobuki_msgs::Led::BLACK;
+				pub_robot_led.publish(robot_led);
+			}
 		} else {
 			ROS_INFO("sys_locked=%d", sys_locked);
 		}
@@ -739,7 +788,7 @@ int main(int argc, char* argv[])
 				ROS_INFO("too short commands");
 				goto DONE;
 			}
-			
+#if 0			
 			// add manual control
 			control = get_control();
 			if (control > -1) {
@@ -749,7 +798,7 @@ int main(int argc, char* argv[])
 				sprintf(g_result, "机器人%s", voice_commands[index].command);
 				printf("NEW voice=[%s] len=%zu\n", g_result, strlen(g_result));
 			}
-
+#endif
 			found = strstr(g_result, "机器人");
 			if (found) {
 				// messages for robot get content
@@ -757,16 +806,6 @@ int main(int argc, char* argv[])
 				printf("voice_command=[%s]\n", g_result);
 			} else {
 				ROS_INFO("skip ...");
-				#if 0
-				memset(tts_content, 0, sizeof(tts_content));
-				strcat(tts_content, "请再说一遍");
-				srv.request.target = tts_content;
-				if (client.call(srv)) {
-					ROS_INFO("call service okay");
-				} else {
-					ROS_INFO("call service fail");
-				}
-				#endif
 				goto DONE;
 			}
 
@@ -794,13 +833,20 @@ int main(int argc, char* argv[])
 				if (code == 61) {
 					// no need to speak out
 				} else {
-					memset(tts_content, 0, sizeof(tts_content));
-					sprintf(tts_content, "执行命令 %s", voice_commands[index].command);
-					srv.request.target = tts_content;
-					if (client.call(srv)) {
-						ROS_INFO("call TTS service okay");
+					if (1 == manual_control) {
+					    memset(tts_content, 0, sizeof(tts_content));
+						sprintf(tts_content, "play /tmp/%d.wav", code);
+						ROS_INFO("exec [%s]", tts_content);
+						system(tts_content);
 					} else {
-						ROS_INFO("call TTS service fail");
+						memset(tts_content, 0, sizeof(tts_content));
+						sprintf(tts_content, "执行命令 %s", voice_commands[index].command);
+						srv.request.target = tts_content;
+						if (client.call(srv)) {
+							ROS_INFO("call TTS service okay");
+						} else {
+							ROS_INFO("call TTS service fail");
+						}						
 					}
 				}
 
@@ -890,16 +936,6 @@ int main(int argc, char* argv[])
 							int i = 0;
 							i = 0;
 							// start to find object TTS
-							#if 0
-							memset(object_finding, 0, sizeof(object_finding));
-							strcat(object_finding, "正在寻找...");
-							srv.request.target = object_finding;
-							if (client.call(srv)) {
-								ROS_INFO("call TTS service okay");
-							} else {
-								ROS_INFO("call TTS service fail");
-							}
-							#endif
 							while (strlen(objects[i].name1)) {
 								ROS_INFO("%s-%s\n", objects[i].name1, objects[i].name2);
 								printf("%s-%s\n", objects[i].name1, objects[i].name2);
@@ -918,22 +954,23 @@ int main(int argc, char* argv[])
 									memset(object_finding, 0, sizeof(object_finding));
 									
 									if (od_resp.result) {
-										strcat(object_finding, "已找到...");
+										if (1 == manual_control) {
+											system("play /tmp/found.wav");
+										} else {
+											TTS_TEXT("已找到");
+										}
 										OR_xyz.data.clear();
 										OR_xyz.data.push_back(od_resp.x);
 										OR_xyz.data.push_back(od_resp.y);
 										OR_xyz.data.push_back(od_resp.z);
 									pub_arm.publish(OR_xyz);
 									} else {
-										strcat(object_finding, "未找到...");
+										if (1 == manual_control) {
+											system("play /tmp/notfound.wav");
+										} else {
+											TTS_TEXT("未找到");
+										}
 									}
-									srv.request.target = object_finding;
-									if (client.call(srv)) {
-										ROS_INFO("call TTS service okay");
-									} else {
-									ROS_INFO("call TTS service fail");
-								}
-									
 								}
 								i++;
 							}
@@ -958,18 +995,18 @@ int main(int argc, char* argv[])
 						input_vel.angular.z=0.0; //left/right
 						switch (code) {
 							case 300:
-								input_vel.angular.z = 0.9;
+								input_vel.angular.z = 1.9;
 								break;
 							case 400:
-								input_vel.angular.z = -0.9;
+								input_vel.angular.z = -1.9;
 								break;
 							case 500:
 							case 501:
-								input_vel.linear.x = 0.2;
+								input_vel.linear.x = 0.3;
 								break;
 							case 600:
 							case 601:
-								input_vel.linear.x = -0.2;
+								input_vel.linear.x = -0.3;
 								break;
 							default:
 								break;
@@ -979,18 +1016,6 @@ int main(int argc, char* argv[])
 					}
 				}
 				//sleep(8);
-				#if 0
-				if (code == 9) {
-					// no tts output
-				} else {
-					srv.request.target = tts_content;
-					if (client.call(srv)) {
-						ROS_INFO("call TTS service okay");
-					} else {
-						ROS_INFO("call TTS service fail");
-					}
-				}
-				#endif
 			} else { // unknown code, send to tuling
 				bool can_send = false;
 				printf("unknow code [%s]\n", g_result);
@@ -1033,28 +1058,18 @@ int main(int argc, char* argv[])
 					can_send = true;
 				}
 				
-				if (can_send) {
-					memset(tts_content, 0, sizeof(tts_content));
-					strcat(tts_content, "请稍等");
-					srv.request.target = tts_content;
-					if (client.call(srv)) {
-						ROS_INFO("call service okay");
-					} else {
-						ROS_INFO("call service fail");
+				if (1 == manual_control) {
+					
+				} else {
+					if (can_send) {
+						TTS_TEXT("请稍等");
+						msg.data = g_result;
+						pub_text.publish(msg); // send to tuling
+						goto DONE;
 					}
-					msg.data = g_result;
-					pub_text.publish(msg); // send to tuling
-					goto DONE;
-				}
-				
-				{
-					memset(tts_content, 0, sizeof(tts_content));
-					strcat(tts_content, "请再说一遍");
-					srv.request.target = tts_content;
-					if (client.call(srv)) {
-						ROS_INFO("call service okay");
-					} else {
-						ROS_INFO("call service fail");
+					
+					{
+						TTS_TEXT("请再说一遍");
 					}
 				}
 				//sleep(8);
@@ -1062,7 +1077,7 @@ int main(int argc, char* argv[])
 			//speech_end = true;
 			//asr_flag =0;
 		}else {
-			ROS_INFO("asr_flag=false");
+			//ROS_INFO("asr_flag=false");
 		}
 DONE:		
 		loop_rate.sleep();
