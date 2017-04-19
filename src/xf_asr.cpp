@@ -189,7 +189,7 @@ static struct st_command voice_commands[255];
 
 static struct st_object_table  objects[] = {
 	{"瓶子", "bottle"}, {"背包", "bag"}, 
-	{"玩具", "toys"}, {"水杯", "cup"},
+	{"玩具", "toys"}, {"水杯", "cup"}, {"枕头", "pillow"},
 	{"椅子", "chair"}, {"显示器", "monitor"}
 };
 
@@ -930,6 +930,9 @@ int main(int argc, char* argv[])
 						case 9:// OR
 						case 91:
 						case 92:
+						case 93:
+						case 94:
+						case 95:
 						{
 							char object_finding[255];
 							char *found_object = NULL;
